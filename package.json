@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "concurrently -n api,web -c blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
   },
   "repository": {
     "type": "git",
@@ -17,5 +18,8 @@
   "bugs": {
     "url": "https://github.com/TimothyLai77/spool-tracker/issues"
   },
-  "homepage": "https://github.com/TimothyLai77/spool-tracker#readme"
+  "homepage": "https://github.com/TimothyLai77/spool-tracker#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.5"
+  }
 }
