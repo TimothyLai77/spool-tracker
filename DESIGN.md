@@ -101,11 +101,13 @@ Decisions made during planning (so future-me remembers *why*):
 | brand           | TEXT    | normalized |
 | material        | TEXT    | normalized |
 | colour          | TEXT    | normalized |
+| colourHex       | TEXT?   | `#rrggbb` — feeds the UI colour swatch |
 | finish          | TEXT?   | normalized |
 | initialWeightMg | INTEGER | |
 | usedMg          | INTEGER | default 0. **Canonical balance** |
 | costCents       | INTEGER | total cost of the spool |
 | isFinished      | BOOLEAN | default false. Manual "retired" flag (spool put away with some left) |
+| notes           | TEXT?   | free text |
 | createdAt       | TEXT    | ISO |
 | updatedAt       | TEXT    | ISO |
 
@@ -132,6 +134,8 @@ Totals (`totalFilamentMg`, `totalCostCents`, `jobCount`) are derived — `SUM()`
 | date             | TEXT    | print date, ISO |
 | createdAt        | TEXT    | |
 | updatedAt        | TEXT    | |
+
+Indexed: `spoolId` (history filter, per-spool totals), `projectId` (derived project totals).
 
 ### `staged_jobs`
 | column         | type    | notes |
@@ -291,8 +295,10 @@ backend/
   can't be bypassed.
 - **Transactions**: better-sqlite3 is synchronous — `db.transaction(() => {...})`
   wraps the spool+job mutations atomically. No async race between the two writes.
-- **Staged-job pruning**: delete `staged_jobs` older than 3 days **on app startup**
-  (replaces the old 2-hour `setInterval`).
+- **Staged-job pruning**: delete `staged_jobs` older than `STAGED_JOB_TTL_DAYS`
+  (default 3 days) **on app startup** (replaces the old 2-hour `setInterval`).
+  Backend env: `DATA_DIR`, `APP_PORT`, `STAGED_JOB_TTL_DAYS` — see
+  `backend/.env.example`.
 - Migrations run automatically at boot → `docker compose up` is the only deploy step.
 
 ---
