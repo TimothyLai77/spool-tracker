@@ -297,8 +297,8 @@ backend/
   wraps the spool+job mutations atomically. No async race between the two writes.
 - **Staged-job pruning**: delete `staged_jobs` older than `STAGED_JOB_TTL_DAYS`
   (default 3 days) **on app startup** (replaces the old 2-hour `setInterval`).
-  Backend env: `DATA_DIR`, `APP_PORT`, `STAGED_JOB_TTL_DAYS` — see
-  `backend/.env.example`.
+  Backend env: `DATA_DIR`, `APP_PORT`, `STAGED_JOB_TTL_DAYS` — dev reads the
+  root-level `.env` (template: `.env.example`); prod gets env from compose.
 - Migrations run automatically at boot → `docker compose up` is the only deploy step.
 
 ---
