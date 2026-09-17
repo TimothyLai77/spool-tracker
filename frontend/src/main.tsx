@@ -4,6 +4,7 @@ import { MantineProvider, localStorageColorSchemeManager } from "@mantine/core";
 import "@mantine/core/styles.css";
 import "./global.css";
 import { Provider } from "react-redux";
+import { BrowserRouter } from "react-router-dom";
 import { store } from "./store";
 import { theme } from "./theme";
 import App from "./App";
@@ -27,7 +28,9 @@ ReactDOM.createRoot(rootElement).render(
           key: "spool-tracker:color-scheme",
         })}
       >
-        <App />
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
       </MantineProvider>
     </Provider>
   </React.StrictMode>,
