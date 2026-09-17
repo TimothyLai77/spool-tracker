@@ -89,6 +89,10 @@ Decisions made during planning (so future-me remembers *why*):
   - `colour`, `finish` → lowercase (`black`, `satin`)
   - `brand` → trimmed + lowercase (`prusament`)
   Stored data is canonical; "Black" can never coexist with "black".
+  Brand display casing (e.g. "Prusa", "Bambu Lab") is a *display* concern —
+  capitalize at render time (CSS `text-transform` / format helper), never at
+  storage: brands have irregular canonical casing (eSun, 3D Bird) that
+  title-casing would mangle.
 - Derived values are **never stored**: `leftMg = initialWeightMg - usedMg`,
   `jobCount = count(jobs)`, project totals = `SUM()` over member jobs.
   (Old app stored the spool ones and drifted.)
