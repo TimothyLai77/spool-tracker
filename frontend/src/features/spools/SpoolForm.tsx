@@ -79,6 +79,8 @@ export interface SpoolFormProps {
   spool?: Spool;
   /** Called after a successful save (page navigates away, modal closes). */
   onSaved?: () => void;
+  /** Cancel-button behaviour; defaults to navigating back to the shelf. */
+  onCancel?: () => void;
 }
 
 /**
@@ -87,7 +89,8 @@ export interface SpoolFormProps {
  * @param onSaved Post-save hook (navigation / close).
  * @returns The form.
  */
-const SpoolForm = ({ spool, onSaved }: SpoolFormProps) => {
+const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
+  const handleCancel = onCancel ?? (() => navigate("/"));
   const navigate = useNavigate();
   const { data: attributes } = useSpoolAttributesQuery();
   const [createSpool] = useCreateSpoolMutation();
@@ -147,7 +150,8 @@ const SpoolForm = ({ spool, onSaved }: SpoolFormProps) => {
     return request
       .then(() => {
         notifications.show({ message: "Spool saved.", color: "teal" });
-        onSaved?.() ?? navigate("/");
+        if (onSaved) onSaved();
+        else navigate("/");
       })
       .catch((error) => {
         const issues = getApiIssues(error);
@@ -306,7 +310,7 @@ const SpoolForm = ({ spool, onSaved }: SpoolFormProps) => {
         </Grid.Col>
       </Grid>
       <Group mt="lg" justify="flex-end">
-        <Button variant="default" onClick={() => navigate("/")}>
+        <Button variant="default" onClick={handleCancel}>
           Cancel
         </Button>
         <Button type="submit">Save spool</Button>
