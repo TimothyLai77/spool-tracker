@@ -1,14 +1,15 @@
-import { Container, Stack, Text, Title } from "@mantine/core";
+import { Container, Stack, Title } from "@mantine/core";
+import SpoolForm from "../features/spools/SpoolForm";
 
 /**
- * Spool form page — create host (ui-plan §5.3). Placeholder for this step;
- * the form component lands in step 5.
+ * Spool form page — create host (ui-plan §5.3). The edit host (modal on
+ * SpoolDetail) reuses the same component in step 6.
  */
 const SpoolFormPage = () => (
-  <Container size="lg">
-    <Stack gap="sm">
+  <Container size="md" py="sm">
+    <Stack gap="lg">
       <Title order={2}>New spool</Title>
-      <Text c="dimmed">The spool form lands in a later step.</Text>
+      <SpoolForm />
     </Stack>
   </Container>
 );
