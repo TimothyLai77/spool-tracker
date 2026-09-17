@@ -4,10 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest",
+    "test": "vitest run",
     "dev": "tsx watch --env-file-if-exists=../.env src/index.ts",
     "start": "node dist/src/index.js",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "migrate": "drizzle-kit generate",
     "studio": "drizzle-kit studio"
   },
