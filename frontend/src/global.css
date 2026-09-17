@@ -66,3 +66,105 @@ html[data-mantine-color-scheme="dark"] body {
   color: var(--mantine-color-teal-2);
   background-color: var(--mantine-color-teal-9);
 }
+
+/* ── Spool gauge (ui-plan §3, the signature) ───────────────────────────── */
+
+.st-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Hub flanges: slightly wider than the track, like the spool's side hubs. */
+.st-gauge-hub {
+  width: 150%;
+  border-radius: 2px;
+  background-color: var(--mantine-color-gray-4);
+}
+
+[data-mantine-color-scheme="dark"] .st-gauge-hub {
+  background-color: var(--mantine-color-dark-5);
+}
+
+.st-gauge-track {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  border: 1px solid var(--mantine-color-gray-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+[data-mantine-color-scheme="dark"] .st-gauge-track {
+  border-color: var(--mantine-color-dark-4);
+}
+
+.st-gauge-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  transition: height 150ms ease-out;
+}
+
+/* ── Swatch dot (card caption) ──────────────────────────────────────────── */
+
+/* ── Shelf card link (whole card tappable, no anchor underline) ───────── */
+
+.st-card-link {
+  display: block;
+  height: 100%;
+  text-decoration: none;
+  color: inherit;
+}
+
+.st-card-link > * {
+  transition: background-color 100ms ease-out, border-color 100ms ease-out;
+}
+
+.st-card-link:hover > * {
+  background-color: var(--mantine-color-gray-1);
+  border-color: var(--mantine-color-gray-4);
+}
+
+[data-mantine-color-scheme="dark"] .st-card-link:hover > * {
+  background-color: var(--mantine-color-dark-5);
+  border-color: var(--mantine-color-dark-3);
+}
+
+.st-swatch-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid var(--mantine-color-gray-3);
+}
+
+[data-mantine-color-scheme="dark"] .st-swatch-dot {
+  border-color: var(--mantine-color-dark-4);
+}
+
+/* ── Phone FAB (ui-plan §5.1) ───────────────────────────────────────────── */
+
+.st-fab {
+  position: fixed;
+  right: 16px;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--mantine-color-white);
+  background-color: var(--mantine-color-teal-6);
+  border: 1px solid var(--mantine-color-teal-7);
+  z-index: 90;
+}
+
+.st-fab:active {
+  background-color: var(--mantine-color-teal-7);
+}
