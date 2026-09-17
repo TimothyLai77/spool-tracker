@@ -1,11 +1,17 @@
 import { configureStore } from "@reduxjs/toolkit";
+import { baseApi } from "./api/baseApi";
 
 /**
- * Redux store. The five RTK Query api slices (spools, jobs, projects,
- * stagedJobs, printers) are added here in phase 3+ as they land.
+ * Redux store. `baseApi` hosts all five RTK Query slices (spools, jobs,
+ * projects, stagedJobs, printers) via `injectEndpoints` — the feature
+ * slices register their endpoints, not their own store slices.
  */
 export const store = configureStore({
-  reducer: {},
+  reducer: {
+    [baseApi.reducerPath]: baseApi.reducer,
+  },
+  middleware: (getDefaultMiddleware) =>
+    getDefaultMiddleware().concat(baseApi.middleware),
 });
 
 export type RootState = ReturnType<typeof store.getState>;
