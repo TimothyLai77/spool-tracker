@@ -32,10 +32,11 @@ export const spools = sqliteTable("spools", {
   initialWeightMg: integer("initialWeightMg").notNull(),
   usedMg: integer("usedMg").notNull().default(0),
   costCents: integer("costCents").notNull(),
-  isFinished: integer("isFinished")
+  // `mode: "boolean"` stores INTEGER but maps boolean ↔ 0/1 at bind time
+  // (better-sqlite3 cannot bind booleans).
+  isFinished: integer("isFinished", { mode: "boolean" })
     .notNull()
-    .default(0)
-    .$type<boolean>(),
+    .default(false),
   notes: text("notes"),
   createdAt: text("createdAt").notNull(),
   updatedAt: text("updatedAt").notNull(),
