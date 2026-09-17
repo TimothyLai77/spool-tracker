@@ -16,7 +16,7 @@
     "resolveJsonModule": true,
 
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "sourceMap": true,
 
     "paths": {
