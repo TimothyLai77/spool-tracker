@@ -4,6 +4,7 @@ import { db } from "./db/client.js";
 import { runMigrations } from "./db/migrate.js";
 import { stagedJobs } from "./db/schema.js";
 import { spoolsRouter } from "./routes/spools.js";
+import { jobsRouter } from "./routes/jobs.js";
 
 /**
  * Parse `STAGED_JOB_TTL_DAYS` (positive number of days, default 3).
@@ -41,6 +42,7 @@ const createApp = (): express.Express => {
   });
 
   app.use("/api", spoolsRouter);
+  app.use("/api", jobsRouter);
 
   return app;
 }
