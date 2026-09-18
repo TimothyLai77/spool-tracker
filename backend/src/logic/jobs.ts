@@ -35,10 +35,10 @@ export type JobMutationResult =
 export type JobDeleteResult = { status: "ok" } | { status: "not-found" };
 
 /**
- * Select columns for the `Job` wire shape: job row columns plus the joined
+ * Select columns for the `Job` API shape: job row columns plus the joined
  * project name (null when the job is unassigned — the opt-in, DESIGN §4).
  */
-const jobWireSelect = {
+const jobSelect = {
   id: jobs.id,
   name: jobs.name,
   spoolId: jobs.spoolId,
@@ -52,13 +52,13 @@ const jobWireSelect = {
 };
 
 /**
- * Resolve one job to its wire shape (or undefined when it does not exist).
+ * Resolve one job to its `Job` API shape (or undefined when it does not exist).
  * @param id Job id.
- * @returns The `Job` wire shape, or undefined.
+ * @returns The `Job` API shape, or undefined.
  */
-const getJobWire = (id: string): Job | undefined => {
+const getJob = (id: string): Job | undefined => {
   const row = db
-    .select(jobWireSelect)
+    .select(jobSelect)
     .from(jobs)
     .leftJoin(projects, eq(jobs.projectId, projects.id))
     .where(eq(jobs.id, id))
@@ -69,11 +69,11 @@ const getJobWire = (id: string): Job | undefined => {
 /**
  * List jobs, most recent print date first, with the joined `projectName`.
  * @param spoolId When given, only jobs on that spool (the `?spoolId=` filter).
- * @returns The `Job` wire shapes.
+ * @returns The `Job` API shapes.
  */
 export const listJobs = (spoolId?: string): Job[] => {
   const all = db
-    .select(jobWireSelect)
+    .select(jobSelect)
     .from(jobs)
     .leftJoin(projects, eq(jobs.projectId, projects.id))
     .orderBy(desc(jobs.date), desc(jobs.createdAt));
@@ -148,9 +148,9 @@ export const createJob = (data: CreateJobData): JobMutationResult => {
       })
       .run();
 
-    // Re-read through the outer `db` handle for the wire shape (same
+    // Re-read through the outer `db` handle for the `Job` shape (same
     // connection, so the transaction's writes are visible).
-    return { status: "ok" as const, job: getJobWire(id) as Job };
+    return { status: "ok" as const, job: getJob(id) as Job };
   });
 };
 
@@ -219,7 +219,7 @@ export const editJob = (id: string, data: EditJobData): JobMutationResult => {
         .run();
     }
 
-    return { status: "ok" as const, job: getJobWire(id) as Job };
+    return { status: "ok" as const, job: getJob(id) as Job };
   });
 };
 
