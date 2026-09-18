@@ -50,7 +50,7 @@ const EMPTY_VALUES: SpoolFormValues = {
   colour: "",
   colourHex: "",
   finish: "",
-  initialWeightGrams: "",
+  initialWeightGrams: "1000",
   cost: "",
   notes: "",
 };
@@ -174,11 +174,12 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
         <Grid.Col span={12}>
           <TextInput
             label="Name"
-            description="Your label for this spool"
-            placeholder="Shelf spool one"
             data-testid="spool-name"
             {...form.getInputProps("name")}
           />
+          <Text size="xs" c="dimmed" mt={4}>
+            Your label for this spool
+          </Text>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <TextInput
@@ -235,30 +236,29 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
           </datalist>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 8 }}>
-          <Group gap="sm" align="flex-start">
-            <Box
-              aria-hidden
-              className="st-swatch-dot"
-              mt="md"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                backgroundColor: COLOUR_HEX_RE.test(form.values.colourHex.trim())
-                  ? form.values.colourHex.trim()
-                  : "var(--mantine-color-gray-2)",
-              }}
-            />
-            <Box style={{ flex: 1 }}>
-              <TextInput
-                label="Colour hex"
-                placeholder="#1a1a1a"
-                description="Optional — drives the swatch and gauge"
-                data-testid="spool-colourhex"
-                {...form.getInputProps("colourHex")}
+          <TextInput
+            label="Colour hex"
+            placeholder="#1a1a1a"
+            data-testid="spool-colourhex"
+            rightSection={
+              <Box
+                aria-hidden
+                className="st-swatch-dot"
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: 6,
+                  backgroundColor: COLOUR_HEX_RE.test(form.values.colourHex.trim())
+                    ? form.values.colourHex.trim()
+                    : "var(--mantine-color-gray-2)",
+                }}
               />
-            </Box>
-          </Group>
+            }
+            {...form.getInputProps("colourHex")}
+          />
+          <Text size="xs" c="dimmed" mt={4}>
+            Optional — drives the swatch and gauge
+          </Text>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <TextInput
@@ -283,12 +283,11 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             label="Initial weight (g)"
             required
             inputMode="decimal"
-            placeholder="750"
             data-testid="spool-weight"
             {...form.getInputProps("initialWeightGrams")}
           />
         </Grid.Col>
-        <Grid.Col span={{ base: 12, sm: 6 }}>
+        <Grid.Col span={12}>
           <TextInput
             label="Cost ($)"
             required
@@ -301,7 +300,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
         <Grid.Col span={12}>
           <Textarea
             label="Notes"
-            placeholder="Where it came from, quirks, lot number…"
+            placeholder="Additional Notes"
             autosize
             minRows={2}
             data-testid="spool-notes"
