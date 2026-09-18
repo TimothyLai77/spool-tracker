@@ -24,7 +24,7 @@ const captionFor = (spool: Spool): string =>
 
 /**
  * Render one spool as a shelf card.
- * @param spool The spool wire shape.
+ * @param spool The spool API shape.
  * @returns The card (links to `/spools/:id`).
  */
 const SpoolCard = ({ spool }: { spool: Spool }) => {

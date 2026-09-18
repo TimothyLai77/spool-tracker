@@ -8,7 +8,7 @@ import type { CreateSpoolData, EditSpoolData } from "../validate/spool.js";
 /**
  * Spool business logic (DESIGN.md §4, §5, §6).
  *
- * All mutations live here (never in routes). Reads compute the derived wire
+ * All mutations live here (never in routes). Reads compute the derived API
  * fields (`leftMg`, `jobCount`) on the fly — they are never stored.
  *
  * The balance invariant: a spool's `initialWeightMg` can never be edited
@@ -25,7 +25,7 @@ export type SpoolMutationResult =
   | { status: "issues"; issues: ApiIssue[] };
 
 /**
- * Attach the derived wire fields to a row. At runtime derrives the amount of filament left in a spool
+ * Attach the derived API fields to a row. At runtime derives the amount of filament left in a spool
  * Derive at runtime to prevent messy two truths with storing filamentUsed & filamentLeft
  * @param row The `spools` table row.
  * @param jobCount The number of jobs on the spool.
@@ -52,11 +52,11 @@ const jobCountsBySpool = (): Map<string, number> => {
 };
 
 /**
- * Resolve one spool row to the wire shape (or undefined when absent).
+ * Resolve one spool row to the `Spool` API shape (or undefined when absent).
  * @param id Spool id.
- * @returns The `Spool` wire shape, or undefined.
+ * @returns The `Spool` API shape, or undefined.
  */
-const getSpoolWire = (id: string): Spool | undefined => {
+const getSpoolById = (id: string): Spool | undefined => {
   const row = db.select().from(spools).where(eq(spools.id, id)).get();
   if (!row) return undefined;
   return attachDerivedFields(row, jobCountsBySpool().get(id) ?? 0);
@@ -65,7 +65,7 @@ const getSpoolWire = (id: string): Spool | undefined => {
 /**
  * List all spools (active and finished), most recently created first, with
  * derived `leftMg` and `jobCount`.
- * @returns The `Spool` wire shapes.
+ * @returns The `Spool` API shapes.
  */
 export const listSpools = (): Spool[] => {
   const rows = db
@@ -81,14 +81,14 @@ export const listSpools = (): Spool[] => {
 /**
  * Fetch a single spool by id.
  * @param id Spool id.
- * @returns The `Spool` wire shape, or undefined when it does not exist.
+ * @returns The `Spool` API shape, or undefined when it does not exist.
  */
-export const getSpool = (id: string): Spool | undefined => getSpoolWire(id);
+export const getSpool = (id: string): Spool | undefined => getSpoolById(id);
 
 /**
  * Insert a new spool from validated create data.
  * @param data Canonical row fields from `validateCreateSpool`.
- * @returns The created `Spool` wire shape.
+ * @returns The created `Spool` API shape.
  */
 export const createSpool = (data: CreateSpoolData): Spool => {
   const now = new Date().toISOString();
@@ -111,7 +111,7 @@ export const createSpool = (data: CreateSpoolData): Spool => {
       updatedAt: now,
     })
     .run();
-  return getSpoolWire(id) as Spool;
+  return getSpoolById(id) as Spool;
 };
 
 /**
@@ -150,7 +150,7 @@ export const editSpool = (id: string, data: EditSpoolData): SpoolMutationResult 
 
     // Re-read through the outer `db` handle for the derived fields (same
     // connection, so the transaction's write is visible).
-    return { status: "ok" as const, spool: getSpoolWire(id) as Spool };
+    return { status: "ok" as const, spool: getSpoolById(id) as Spool };
   });
 };
 
@@ -170,7 +170,7 @@ export const finishSpool = (id: string): Extract<SpoolMutationResult, { status: 
     .where(eq(spools.id, id))
     .run();
 
-  return { status: "ok", spool: getSpoolWire(id) as Spool };
+  return { status: "ok", spool: getSpoolById(id) as Spool };
 };
 
 /**

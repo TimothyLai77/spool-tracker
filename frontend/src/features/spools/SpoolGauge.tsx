@@ -21,7 +21,7 @@ export type SpoolLevel = "ok" | "low" | "empty" | "finished";
 
 /**
  * Classify a spool's remaining filament.
- * @param spool The spool wire shape.
+ * @param spool The spool API shape.
  * @returns `finished` when retired; `empty` at 0 g left; `low` under 20 %;
  *   otherwise `ok`.
  */
@@ -61,7 +61,7 @@ export interface SpoolGaugeProps {
 
 /**
  * Render the gauge for a spool.
- * @param spool The spool wire shape.
+ * @param spool The spool API shape.
  * @param size `sm` (cards) or `lg` (detail header).
  * @returns The gauge element (track + fill + hub flanges).
  */

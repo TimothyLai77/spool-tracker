@@ -17,7 +17,7 @@ import { setupFreshDb } from "../utils/freshDb.js";
 /**
  * Logic tests for spools against a fresh in-memory database (DESIGN.md §4, §9).
  *
- * Covers CRUD + derived wire fields, and the balance invariant: an spool
+ * Covers CRUD + derived API fields, and the balance invariant: an spool
  * edit that would set `initialWeightMg` below its `usedMg` is rejected with
  * `issues` (the route maps that to a 400) and leaves the spool untouched.
  */
