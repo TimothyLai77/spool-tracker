@@ -209,7 +209,7 @@ and the app talks *to* it, not the other way round).
 | POST   | `/api/spools/:id/finish`| —                           | `Spool` (`isFinished: true`) |
 | GET    | `/api/spool-attributes` | —                           | `{ brands[], materials[], colours[], finishes[] }` — `SELECT DISTINCT` for form suggestions |
 
-`Spool` (wire shape) = DB columns + derived `leftMg`, `jobCount`.
+`Spool` (API shape) = DB columns + derived `leftMg`, `jobCount`.
 
 ### Jobs
 | Method | Path                  | Body | Returns |
@@ -219,7 +219,7 @@ and the app talks *to* it, not the other way round).
 | PATCH  | `/api/jobs/:id`       | partial (editing `filamentUsed` rebalances the spool; `projectId` moves it between projects) | `Job` |
 | DELETE | `/api/jobs/:id`       | —    | 204 (rebalances the spool) |
 
-`Job` (wire shape) = DB columns + `projectName?` (joined) — so lists can render
+`Job` (API shape) = DB columns + `projectName?` (joined) — so lists can render
 a project badge without a second fetch.
 
 ### Projects

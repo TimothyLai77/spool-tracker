@@ -13,7 +13,7 @@
  *   converts them at the edge (see `shared/units.ts`).
  * - Timestamps are ISO-8601 UTC strings, formatted client-side.
  * - Derived values are never stored. The "Row" types are what lives in the
- *   database; the wire types extend them with the values the backend computes
+ *   database; the API types extend them with the values the backend computes
  *   on read (`leftMg`, `jobCount`, project totals, joined `projectName`).
  */
 
@@ -126,7 +126,7 @@ export interface PrinterRow {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Wire shapes (row + derived / joined values, as sent over the API)        */
+/* API shapes (row + derived / joined values, as sent over the API)         */
 /* -------------------------------------------------------------------------- */
 
 /** A spool as returned by the API: row columns plus derived balance fields. */
@@ -156,20 +156,20 @@ export interface Project extends ProjectRow {
 }
 
 /**
- * A staged job over the wire. Carries the row columns as-is; there are no
+ * A staged job over the API. Carries the row columns as-is; there are no
  * derived fields to add at this layer.
  */
 export type StagedJob = StagedJobRow;
 
-/** A printer over the wire (settings). No derived fields. */
+/** A printer over the API (settings). No derived fields. */
 export type Printer = PrinterRow;
 
 /**
- * An AMS channel → spool mapping over the wire. Extends the stored triple with
+ * An AMS channel → spool mapping over the API. Extends the stored triple with
  * the resolved spool name so the UI can render the picker without a second
  * fetch.
  */
-export interface AmsMappingWire {
+export interface AmsMapping {
   printerId: string;
   /** AMS channel (1..n). */
   channel: number;
