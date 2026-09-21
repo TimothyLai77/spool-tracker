@@ -8,6 +8,9 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 // The single .env lives at the repo root (shared with the backend).
 const rootEnv = loadEnv("development", path.join(dirname, ".."), "");
 
+/** Display currency injected into client code (see src/vite-env.d.ts). */
+const clientCurrency = rootEnv.CURRENCY ?? "USD";
+
 /**
  * Vite dev server + build config.
  * - `@shared` alias mirrors the backend tsconfig paths (DESIGN.md §8).
@@ -19,6 +22,12 @@ export default defineConfig({
     alias: {
       "@shared": path.join(dirname, "../shared"),
     },
+  },
+  define: {
+    // Vite only auto-exposes VITE_* vars to the client; `define` lets us
+    // keep the plain `CURRENCY` name from the root .env. Works in dev and
+    // production builds alike.
+    "import.meta.env.CURRENCY": JSON.stringify(clientCurrency),
   },
   server: {
     port: 5173,

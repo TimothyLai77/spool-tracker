@@ -362,7 +362,9 @@ frontend/
   (hand-written; single source of truth for both sides)
 - `normalize.ts` — `normMaterial/normColour/normFinish/normBrand` (used by backend
   validators; frontend previews the normalized value in the form)
-- `units.ts` — `gramsToMg`, `mgToGrams`, `centsToCurrency`
+- `units.ts` — `gramsToMg`, `mgToGrams`, `centsToCurrency(cents, currency?)`,
+  `currencySymbol(currency?)` (display currency comes from the root `.env`
+  `CURRENCY`, default `USD`; frontend-only — stored amounts are plain cents)
 - `api.ts` — response wrapper types (`ApiError`, `PagedX` if ever needed)
 
 ---

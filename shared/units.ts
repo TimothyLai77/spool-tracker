@@ -22,16 +22,41 @@ export const gramsToMg = (grams: number): number => Math.round(grams * 1000);
 export const mgToGrams = (mg: number): number => mg / 1000;
 
 /**
- * Convert integer cents to a currency string for display.
- * Uses a fixed locale/currency so rendering is stable across machines;
- * change `locale`/`currency` here if the app's currency ever needs to.
- * @param cents Amount in integer cents.
- * @returns Formatted currency string, e.g. `12.99 → "$12.99"`.
+ * Pick a display locale for a currency code. CAD gets its natural `en-CA`
+ * locale (renders `$12.99`); everything else falls back to a fixed `en-GB`
+ * locale so rendering stays stable across machines.
+ * @param currency ISO 4217 currency code, e.g. `"CAD"`.
+ * @returns The BCP 47 locale tag to format with.
  */
-export const centsToCurrency = (cents: number): string =>
-  new Intl.NumberFormat("en-GB", { style: "currency", currency: "USD" }).format(
-    cents / 100,
-  );
+const displayLocale = (currency: string): string =>
+  currency === "CAD" ? "en-CA" : "en-GB";
+
+/**
+ * Convert integer cents to a currency string for display.
+ * @param cents Amount in integer cents.
+ * @param currency ISO 4217 currency code, e.g. `"CAD"` (default `"USD"`).
+ * @returns Formatted currency string, e.g. `1299 → "$12.99"` (USD),
+ *          `1299 → "$12.99"` (CAD, `en-CA`).
+ */
+export const centsToCurrency = (cents: number, currency: string = "USD"): string =>
+  new Intl.NumberFormat(displayLocale(currency), {
+    style: "currency",
+    currency,
+  }).format(cents / 100);
+
+/**
+ * Get the currency symbol for display, for use in input labels such as
+ * `Cost ($)`. Uses the same locale rules as {@link centsToCurrency}.
+ * @param currency ISO 4217 currency code (default `"USD"`).
+ * @returns The currency symbol, e.g. `"$"` (USD, CAD) or `"£"` (GBP).
+ */
+export const currencySymbol = (currency: string = "USD"): string => {
+  const parts = new Intl.NumberFormat(displayLocale(currency), {
+    style: "currency",
+    currency,
+  }).formatToParts(1);
+  return parts.find((part) => part.type === "currency")?.value ?? currency;
+};
 
 /**
  * Convert a currency-amount input (e.g. `12.99`) to integer cents.

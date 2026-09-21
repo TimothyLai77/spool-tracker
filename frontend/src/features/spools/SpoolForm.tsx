@@ -14,6 +14,7 @@ import { notifications } from "@mantine/notifications";
 import { useNavigate } from "react-router-dom";
 import { normBrand, normColour, normFinish, normMaterial } from "@shared/normalize";
 import { mgToGrams } from "@shared/units";
+import { currencySymbol } from "../../lib/format";
 import type { Spool } from "@shared/types";
 import { useCreateSpoolMutation, useEditSpoolMutation, useSpoolAttributesQuery } from "../../api/spoolsApi";
 import { getApiIssues, getErrorMessage } from "../../api/errors";
@@ -295,7 +296,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
         </Grid.Col>
         <Grid.Col span={12}>
           <TextInput
-            label="Cost ($)"
+            label={`Cost (${currencySymbol()})`}
             required
             inputMode="decimal"
             placeholder="12.99"

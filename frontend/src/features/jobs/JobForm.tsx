@@ -19,7 +19,7 @@ import {
 } from "../../api/jobsApi";
 import { useListProjectsQuery } from "../../api/projectsApi";
 import { getApiIssues, getErrorMessage } from "../../api/errors";
-import { formatGrams } from "../../lib/format";
+import { currencySymbol, formatGrams } from "../../lib/format";
 
 /**
  * The job form (DESIGN.md §7, T7) — one component, two modes:
@@ -213,7 +213,7 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <TextInput
-            label="Cost ($)"
+            label={`Cost (${currencySymbol()})`}
             inputMode="decimal"
             placeholder={job ? "blank keeps the current cost" : "auto from spool"}
             data-testid="job-cost"
