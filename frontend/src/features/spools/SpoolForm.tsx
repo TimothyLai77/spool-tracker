@@ -147,7 +147,13 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
       ? editSpool({ id: spool.id, body: payload })
       : createSpool(payload);
 
+    // RTK Query 2.12 mutation promises never reject — the returned promise
+    // resolves to `{ data }` on success and `{ error }` on failure
+    // (asSafePromise inside buildInitiate). `.unwrap()` restores the
+    // classic resolve-on-success / reject-on-failure semantics this form
+    // is written against (same fix as JobForm, T7).
     return request
+      .unwrap()
       .then(() => {
         notifications.show({ message: "Spool saved.", color: "teal" });
         if (onSaved) onSaved();
@@ -175,7 +181,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
           <TextInput
             label="Name"
             data-testid="spool-name"
-            {...form.getInputProps("name")}
+            {...form.getInputProps("name", { withError: true })}
           />
           <Text size="xs" c="dimmed" mt={4}>
             Your label for this spool
@@ -187,7 +193,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             required
             list="spool-attributes-brand"
             data-testid="spool-brand"
-            {...form.getInputProps("brand")}
+            {...form.getInputProps("brand", { withError: true })}
           />
           <NormalizedHint
             raw={form.values.brand}
@@ -205,7 +211,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             required
             list="spool-attributes-material"
             data-testid="spool-material"
-            {...form.getInputProps("material")}
+            {...form.getInputProps("material", { withError: true })}
           />
           <NormalizedHint
             raw={form.values.material}
@@ -223,7 +229,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             required
             list="spool-attributes-colour"
             data-testid="spool-colour"
-            {...form.getInputProps("colour")}
+            {...form.getInputProps("colour", { withError: true })}
           />
           <NormalizedHint
             raw={form.values.colour}
@@ -254,7 +260,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
                 }}
               />
             }
-            {...form.getInputProps("colourHex")}
+            {...form.getInputProps("colourHex", { withError: true })}
           />
           <Text size="xs" c="dimmed" mt={4}>
             Optional — drives the swatch and gauge
@@ -266,7 +272,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             list="spool-attributes-finish"
             placeholder="glossy, satin, matte…"
             data-testid="spool-finish"
-            {...form.getInputProps("finish")}
+            {...form.getInputProps("finish", { withError: true })}
           />
           <NormalizedHint
             raw={form.values.finish}
@@ -284,7 +290,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             required
             inputMode="decimal"
             data-testid="spool-weight"
-            {...form.getInputProps("initialWeightGrams")}
+            {...form.getInputProps("initialWeightGrams", { withError: true })}
           />
         </Grid.Col>
         <Grid.Col span={12}>
@@ -294,7 +300,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             inputMode="decimal"
             placeholder="12.99"
             data-testid="spool-cost"
-            {...form.getInputProps("cost")}
+            {...form.getInputProps("cost", { withError: true })}
           />
         </Grid.Col>
         <Grid.Col span={12}>
@@ -304,7 +310,7 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             autosize
             minRows={2}
             data-testid="spool-notes"
-            {...form.getInputProps("notes") as TextareaProps}
+            {...form.getInputProps("notes", { withError: true }) as TextareaProps}
           />
         </Grid.Col>
       </Grid>
