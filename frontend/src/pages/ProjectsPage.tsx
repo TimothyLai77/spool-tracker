@@ -65,16 +65,27 @@ const ProjectsPage = () => {
               </Text>
             )}
           </Group>
-          <Group gap="xs">
-            <TextInput
-              label="New project"
-              placeholder="e.g. Prints for Alice"
-              value={newName}
-              onChange={(e) => setNewName(e.currentTarget.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              style={{ width: 220 }}
-              data-testid="project-new-name"
-            />
+          {/*
+            Outer label (not the `label` prop) so the Add button can align
+            with the input field itself: with a label inside the input the
+            Group would stretch the button across label + field, offsetting
+            it vertically from the field's center line.
+          */}
+          <Group gap="xs" align="flex-end">
+            <Stack gap={4}>
+              <Text size="xs" c="dimmed" fw={500}>
+                New project
+              </Text>
+              <TextInput
+                placeholder="e.g. Project Name"
+                value={newName}
+                onChange={(e) => setNewName(e.currentTarget.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+                style={{ width: 220 }}
+                aria-label="New project name"
+                data-testid="project-new-name"
+              />
+            </Stack>
             <Button
               onClick={handleCreate}
               loading={creating}

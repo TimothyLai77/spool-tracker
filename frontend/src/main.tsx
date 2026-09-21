@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { MantineProvider, localStorageColorSchemeManager } from "@mantine/core";
 import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
 import "./global.css";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
