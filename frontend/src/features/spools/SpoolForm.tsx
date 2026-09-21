@@ -1,4 +1,5 @@
 import {
+  Autocomplete,
   Box,
   Button,
   Grid,
@@ -23,7 +24,9 @@ import { getApiIssues, getErrorMessage } from "../../api/errors";
  * The spool form (ui-plan §5.3) — one component, two hosts:
  * full page for create (SpoolFormPage), modal on SpoolDetail for edit (step 6).
  *
- * - Suggestions: `<input list>` + `<datalist>` from `/api/spool-attributes`.
+ * - Suggestions: Mantine `<Autocomplete>` fed from `/api/spool-attributes`
+ *   — the dropdown filters to existing values as you type, and new values
+ *   can be typed freely.
  * - Normalized preview: a `Stored as …` hint when the raw value differs from
  *   its canonical form (storage normalizes; the user sees it before saving).
  * - Numeric fields are strings while typing, coerced with `Number()` on
@@ -189,10 +192,11 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
           </Text>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
-          <TextInput
+          <Autocomplete
             label="Brand"
             required
-            list="spool-attributes-brand"
+            clearable
+            data={attributes?.brands ?? []}
             data-testid="spool-brand"
             {...form.getInputProps("brand", { withError: true })}
           />
@@ -200,17 +204,13 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             raw={form.values.brand}
             norm={normBrand(form.values.brand)}
           />
-          <datalist id="spool-attributes-brand">
-            {attributes?.brands.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
-          <TextInput
+          <Autocomplete
             label="Material"
             required
-            list="spool-attributes-material"
+            clearable
+            data={attributes?.materials ?? []}
             data-testid="spool-material"
             {...form.getInputProps("material", { withError: true })}
           />
@@ -218,17 +218,13 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             raw={form.values.material}
             norm={normMaterial(form.values.material)}
           />
-          <datalist id="spool-attributes-material">
-            {attributes?.materials.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 4 }}>
-          <TextInput
+          <Autocomplete
             label="Colour"
             required
-            list="spool-attributes-colour"
+            clearable
+            data={attributes?.colours ?? []}
             data-testid="spool-colour"
             {...form.getInputProps("colour", { withError: true })}
           />
@@ -236,11 +232,6 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             raw={form.values.colour}
             norm={normColour(form.values.colour)}
           />
-          <datalist id="spool-attributes-colour">
-            {attributes?.colours.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 8 }}>
           <TextInput
@@ -268,9 +259,10 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
           </Text>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
-          <TextInput
+          <Autocomplete
             label="Finish"
-            list="spool-attributes-finish"
+            clearable
+            data={attributes?.finishes ?? []}
             placeholder="glossy, satin, matte…"
             data-testid="spool-finish"
             {...form.getInputProps("finish", { withError: true })}
@@ -279,11 +271,6 @@ const SpoolForm = ({ spool, onSaved, onCancel }: SpoolFormProps) => {
             raw={form.values.finish}
             norm={normFinish(form.values.finish)}
           />
-          <datalist id="spool-attributes-finish">
-            {attributes?.finishes.map((value) => (
-              <option key={value} value={value} />
-            ))}
-          </datalist>
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
           <TextInput

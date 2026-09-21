@@ -11,7 +11,7 @@ import { baseApi } from "./baseApi";
  *
  * Invalidation (DESIGN §7): create/edit/delete/finish invalidate `Spool`;
  * create/edit/delete additionally invalidate `SpoolAttributes` (distinct
- * brand/material/colour/finish lists feed the form datalists).
+ * brand/material/colour/finish lists feed the form's Autocomplete fields).
  */
 export const spoolsApi = baseApi.injectEndpoints({
   endpoints: (build) => ({
@@ -58,7 +58,7 @@ export const spoolsApi = baseApi.injectEndpoints({
       invalidatesTags: ["Spool"],
     }),
 
-    /** GET /api/spool-attributes — distinct values for datalists. */
+    /** GET /api/spool-attributes — distinct values for the form's suggestion lists. */
     spoolAttributes: build.query<SpoolAttributes, void>({
       query: () => "/spool-attributes",
       providesTags: ["SpoolAttributes"],
