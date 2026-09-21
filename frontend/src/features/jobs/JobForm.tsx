@@ -2,6 +2,7 @@ import {
   Button,
   Grid,
   Group,
+  Select,
   Stack,
   Text,
   TextInput,
@@ -16,6 +17,7 @@ import {
   useCreateJobMutation,
   useEditJobMutation,
 } from "../../api/jobsApi";
+import { useListProjectsQuery } from "../../api/projectsApi";
 import { getApiIssues, getErrorMessage } from "../../api/errors";
 import { formatGrams } from "../../lib/format";
 
@@ -45,6 +47,8 @@ interface JobFormValues {
   filamentUsedGrams: string;
   date: string | null;
   cost: string;
+  /** Project id, or `""` for no project (the invisible default). */
+  project: string;
 }
 
 export interface JobFormProps {
@@ -69,6 +73,7 @@ export interface JobFormProps {
 const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
   const [createJob] = useCreateJobMutation();
   const [editJob] = useEditJobMutation();
+  const { data: projects = [] } = useListProjectsQuery();
 
   const initial: JobFormValues = job
     ? {
@@ -76,13 +81,21 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
         filamentUsedGrams: String(mgToGrams(job.filamentUsedMg)),
         date: dayjs(job.date).format("YYYY-MM-DD"),
         cost: String(job.costCents / 100),
+        project: job.projectId ?? "",
       }
     : {
         name: "",
         filamentUsedGrams: "",
         date: dayjs().format("YYYY-MM-DD"),
         cost: "",
+        project: "",
       };
+
+  /** Select options: an explicit "No project" plus every stored project. */
+  const projectOptions = [
+    { label: "No project", value: "" },
+    ...projects.map((p) => ({ label: p.name, value: p.id })),
+  ];
 
   const form = useForm<JobFormValues>({
     initialValues: initial,
@@ -114,6 +127,8 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
             name: values.name.trim(),
             filamentUsedGrams: Number(values.filamentUsedGrams),
             ...(trimmedCost !== "" ? { cost: Number(trimmedCost) } : {}),
+            // Blank unassigns from the current project; a value reassigns.
+            projectId: values.project === "" ? null : values.project,
           } satisfies EditJobInput,
         })
       : createJob({
@@ -123,6 +138,7 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
           // "YYYY-MM-DD" parses to UTC midnight; required on create, so set.
           date: values.date ?? undefined,
           ...(trimmedCost !== "" ? { cost: Number(trimmedCost) } : {}),
+          ...(values.project !== "" ? { projectId: values.project } : {}),
         });
 
     // RTK Query 2.12 mutation promises never reject — the returned promise
@@ -205,6 +221,17 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
           />
           <Text size="xs" c="dimmed" mt={4}>
             Optional — left blank, it&apos;s {job ? "kept as is" : "derived from the spool"}
+          </Text>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <Select
+            label="Project"
+            data={projectOptions}
+            data-testid="job-project"
+            {...form.getInputProps("project")}
+          />
+          <Text size="xs" c="dimmed" mt={4}>
+            Optional — groups this job under a project
           </Text>
         </Grid.Col>
       </Grid>

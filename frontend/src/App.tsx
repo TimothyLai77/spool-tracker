@@ -6,6 +6,7 @@ import HomePage from "./pages/HomePage";
 import SpoolDetailPage from "./pages/SpoolDetailPage";
 import SpoolFormPage from "./pages/SpoolFormPage";
 import ProjectsPage from "./pages/ProjectsPage";
+import ProjectDetailPage from "./pages/ProjectDetailPage";
 import StagedJobsPage from "./pages/StagedJobsPage";
 import SettingsPage from "./pages/SettingsPage";
 
@@ -112,6 +113,7 @@ const App = () => {
             <Route path="/spools/new" element={<SpoolFormPage />} />
             <Route path="/spools/:id" element={<SpoolDetailPage />} />
             <Route path="/projects" element={<ProjectsPage />} />
+            <Route path="/projects/:id" element={<ProjectDetailPage />} />
             <Route path="/staged" element={<StagedJobsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>

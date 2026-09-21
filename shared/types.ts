@@ -156,6 +156,16 @@ export interface Project extends ProjectRow {
 }
 
 /**
+ * The `GET /api/projects/:id` envelope: one project with its derived totals
+ * plus its member jobs (server-ordered, most recent print first). The jobs
+ * already carry the joined `projectName`.
+ */
+export interface ProjectDetail {
+  project: Project;
+  jobs: Job[];
+}
+
+/**
  * A staged job over the API. Carries the row columns as-is; there are no
  * derived fields to add at this layer.
  */

@@ -158,7 +158,8 @@ const SpoolDetailPage = () => {
           {jobsLoading ? (
             <Text c="dimmed">Loading…</Text>
           ) : (
-            <JobList spool={spool} jobs={jobs} />
+            // Every job on this page belongs to this one spool.
+            <JobList resolveSpool={() => spool} jobs={jobs} />
           )}
         </Stack>
 
