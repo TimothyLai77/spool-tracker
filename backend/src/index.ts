@@ -6,6 +6,7 @@ import { stagedJobs } from "./db/schema.js";
 import { spoolsRouter } from "./routes/spools.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { projectsRouter } from "./routes/projects.js";
+import { stagedJobsRouter } from "./routes/stagedJobs.js";
 
 /**
  * Parse `STAGED_JOB_TTL_DAYS` (positive number of days, default 3).
@@ -45,6 +46,7 @@ const createApp = (): express.Express => {
   app.use("/api", spoolsRouter);
   app.use("/api", jobsRouter);
   app.use("/api", projectsRouter);
+  app.use("/api", stagedJobsRouter);
 
   return app;
 }
