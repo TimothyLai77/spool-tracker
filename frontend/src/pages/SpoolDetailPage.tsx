@@ -18,7 +18,10 @@ import {
   useFinishSpoolMutation,
   useGetSpoolQuery,
 } from "../api/spoolsApi";
+import { useListJobsQuery } from "../api/jobsApi";
 import { getErrorMessage } from "../api/errors";
+import JobForm from "../features/jobs/JobForm";
+import JobList from "../features/jobs/JobList";
 import SpoolGauge from "../features/spools/SpoolGauge";
 import SpoolForm from "../features/spools/SpoolForm";
 import { formatCents, formatDate, formatGrams } from "../lib/format";
@@ -34,7 +37,11 @@ const SpoolDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data: spool, isLoading, isError } = useGetSpoolQuery(id ?? "");
+  const { data: jobs = [], isLoading: jobsLoading } = useListJobsQuery({
+    spoolId: id,
+  });
 
+  const [addJobOpen, setAddJobOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -135,16 +142,24 @@ const SpoolDetailPage = () => {
           </Stack>
         )}
 
-        {/* Job history — jobs API lands in T6 */}
+        {/* Job history (T7) — server-ordered, real data */}
         <Stack gap="xs">
-          <Text size="sm" tt="uppercase" c="dimmed" fw={500}>
-            Jobs
-          </Text>
-          <Text c="dimmed">
-            {spool.jobCount === 0
-              ? "No jobs yet."
-              : `${spool.jobCount} job${spool.jobCount === 1 ? "" : "s"} — history appears with jobs (next step).`}
-          </Text>
+          <Group justify="space-between" align="baseline">
+            <Text size="sm" tt="uppercase" c="dimmed" fw={500}>
+              Jobs
+            </Text>
+            {/* A finished spool is retired — no new jobs on it. */}
+            {!spool.isFinished && (
+              <Button size="xs" variant="light" onClick={() => setAddJobOpen(true)}>
+                Add job
+              </Button>
+            )}
+          </Group>
+          {jobsLoading ? (
+            <Text c="dimmed">Loading…</Text>
+          ) : (
+            <JobList spool={spool} jobs={jobs} />
+          )}
         </Stack>
 
         {/* Actions */}
@@ -166,6 +181,20 @@ const SpoolDetailPage = () => {
           )}
         </Group>
       </Stack>
+
+      {/* Add job — JobForm in create mode */}
+      <Modal
+        opened={addJobOpen}
+        onClose={() => setAddJobOpen(false)}
+        title="Add job"
+        size="md"
+      >
+        <JobForm
+          spool={spool}
+          onSaved={() => setAddJobOpen(false)}
+          onCancel={() => setAddJobOpen(false)}
+        />
+      </Modal>
 
       {/* Edit — reuses the create form */}
       <Modal
