@@ -125,7 +125,13 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
           ...(trimmedCost !== "" ? { cost: Number(trimmedCost) } : {}),
         });
 
+    // RTK Query 2.12 mutation promises never reject — the returned promise
+    // resolves to `{ data }` on success and `{ error }` on failure
+    // (asSafePromise inside buildInitiate). `.unwrap()` restores the
+    // classic resolve-on-success / reject-on-failure semantics this form
+    // is written against.
     return request
+      .unwrap()
       .then(() => {
         notifications.show({
           message: job ? "Job saved." : "Job added.",
@@ -153,7 +159,7 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
             label="Name"
             required
             data-testid="job-name"
-            {...form.getInputProps("name")}
+            {...form.getInputProps("name", { withError: true })}
           />
         </Grid.Col>
         <Grid.Col span={{ base: 12, sm: 6 }}>
@@ -162,7 +168,7 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
             required
             inputMode="decimal"
             data-testid="job-grams"
-            {...form.getInputProps("filamentUsedGrams")}
+            {...form.getInputProps("filamentUsedGrams", { withError: true })}
           />
           <Text size="xs" c="dimmed" mt={4}>
             {job
@@ -195,7 +201,7 @@ const JobForm = ({ spool, job, onSaved, onCancel }: JobFormProps) => {
             inputMode="decimal"
             placeholder={job ? "blank keeps the current cost" : "auto from spool"}
             data-testid="job-cost"
-            {...form.getInputProps("cost")}
+            {...form.getInputProps("cost", { withError: true })}
           />
           <Text size="xs" c="dimmed" mt={4}>
             Optional — left blank, it&apos;s {job ? "kept as is" : "derived from the spool"}
