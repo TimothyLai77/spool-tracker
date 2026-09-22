@@ -11,6 +11,8 @@ that group jobs into totals.
 
 **Goals**
 - Single-user filament tracking: spools, per-spool job history, cost tracking.
+- **Multi-material prints**: a job may draw on several spools (e.g. AMS
+  multi-colour); the balance invariant spans all of them.
 - Printer-based detection of finished prints (Bambu LAN), committed to a spool manually.
 - Optional **projects**: group jobs (e.g. prints for a friend) and see total
   filament + cost per project. Personal prints carry no project — the feature is
@@ -94,8 +96,12 @@ Decisions made during planning (so future-me remembers *why*):
   storage: brands have irregular canonical casing (eSun, 3D Bird) that
   title-casing would mangle.
 - Derived values are **never stored**: `leftMg = initialWeightMg - usedMg`,
-  `jobCount = count(jobs)`, project totals = `SUM()` over member jobs.
-  (Old app stored the spool ones and drifted.)
+  `jobCount = count(jobs)`, project totals = `SUM()` over member jobs, job
+  totals = `SUM()` over its `job_filaments`. (Old app stored the spool ones
+  and drifted.)
+- A **job is one physical print**, not one spool's worth of it. Multi-material
+  prints (several spools, one print) live in the `job_filaments` join table —
+  see below. The old "one job = one spool" shape is abandoned.
 
 ### `spools`
 | column          | type    | notes |
@@ -127,30 +133,48 @@ Totals (`totalFilamentMg`, `totalCostCents`, `jobCount`) are derived — `SUM()`
 `COUNT()` over member jobs, spanning any number of spools. Never stored.
 
 ### `jobs`
-| column           | type    | notes |
-|------------------|---------|-------|
-| id               | TEXT PK | uuid |
-| name             | TEXT    | |
-| spoolId          | TEXT FK | → spools.id, `ON DELETE CASCADE` |
-| projectId        | TEXT?   | → projects.id, `ON DELETE SET NULL`. **Nullable = the opt-in.** Deleting a project keeps its jobs (they become unassigned) |
-| filamentUsedMg   | INTEGER | |
-| costCents        | INTEGER | if omitted at create, derived: `usedMg * (spool.costCents / spool.initialWeightMg)` |
-| date             | TEXT    | print date, ISO |
-| createdAt        | TEXT    | |
-| updatedAt        | TEXT    | |
+One row per **physical print**, any number of spools (see `job_filaments`).
 
-Indexed: `spoolId` (history filter, per-spool totals), `projectId` (derived project totals).
+| column    | type    | notes |
+|-----------|---------|-------|
+| id        | TEXT PK | uuid |
+| name      | TEXT    | |
+| projectId | TEXT?   | → projects.id, `ON DELETE SET NULL`. **Nullable = the opt-in.** Deleting a project keeps its jobs (they become unassigned) |
+| date      | TEXT    | print date, ISO |
+| createdAt | TEXT    | |
+| updatedAt | TEXT    | |
 
-### `staged_jobs`
+Totals (`filamentUsedMg`, `costCents`) are derived — `SUM()` over `job_filaments`.
+Indexed: `projectId` (derived project totals).
+
+### `job_filaments`
 | column         | type    | notes |
 |----------------|---------|-------|
 | id             | TEXT PK | uuid |
-| name           | TEXT    | from printer sync or manual entry |
-| filamentUsedMg | INTEGER?| grams × 1000. Nullable: printer-detected jobs with an unparseable gcode leave it blank for the user to fill at commit |
-| date           | TEXT    | ISO |
-| printerId      | TEXT?   | set when detected via printer sync |
-| amsChannel     | INTEGER?| which AMS channel the job used (for spool pre-select) |
-| createdAt      | TEXT    | for TTL pruning |
+| jobId          | TEXT FK | → jobs.id, `ON DELETE CASCADE` |
+| spoolId        | TEXT FK | → spools.id, `ON DELETE CASCADE` |
+| filamentUsedMg | INTEGER | |
+| costCents      | INTEGER | if omitted at create, derived per spool: `mg * (spool.costCents / spool.initialWeightMg)` |
+| amsChannel     | INTEGER?| AMS channel this filament came from (set by printer sync / commit) |
+
+Indexed: `jobId` (job detail fetch), `spoolId` (history filter, per-spool totals).
+The same spool may appear twice (same colour loaded in two AMS slots) — rows are
+per-channel, merged on display.
+
+**Schema rebase note**: this table was added in development, before any data
+exists anywhere — the initial migration (`drizzle/0000_*.sql`) is *regenerated*
+from `schema.ts`, not extended with a `0001`. The moment a DB with real data
+exists, every schema change is a real migration.
+
+### `staged_jobs`
+| column    | type    | notes |
+|-----------|---------|-------|
+| id        | TEXT PK | uuid |
+| name      | TEXT    | from printer sync or manual entry |
+| filaments | TEXT    | JSON: `[{ channel?, mg? }]` — one entry per filament the print used. `channel` = AMS slot (printer sync); `mg` nullable: unparseable gcode leaves it blank for the user to fill at commit. Manual entry: one entry, no channel. |
+| date      | TEXT    | ISO |
+| printerId | TEXT?   | set when detected via printer sync |
+| createdAt | TEXT    | for TTL pruning |
 
 ### `printers` (settings)
 | column      | type    | notes |
@@ -182,13 +206,14 @@ every mutation a **single SQLite transaction** that touches both tables:
 
 | operation        | transaction body |
 |------------------|------------------|
-| create job       | check spool exists · check `usedMg + amt ≤ initialWeightMg` · `usedMg += amt` · insert job |
-| edit job         | `delta = oldAmt − newAmt` · check bounds · `usedMg += delta` · update job |
-| delete job       | `usedMg −= amt` · delete job |
+| create job       | check each spool exists · per spool check `usedMg + amt ≤ initialWeightMg` · `usedMg += amt` per spool · insert job + `job_filaments` rows |
+| edit job         | per-spool `delta = oldAmt − newAmt` (added/removed filaments included) · check bounds · `usedMg += delta` per spool · update job + rows |
+| delete job       | `usedMg −= amt` per member spool · delete job (rows cascade) |
 | edit spool       | check `usedMg ≤ new initialWeightMg` · update spool |
 
-Over-draft → 400, spool untouched. (This is the old app's bug farm: `editJob`'s
-zero-amount special case, `editSpool`'s missing bounds TODO — both gone by construction.)
+Over-draft on **any** member spool → 400, all spools untouched. (This is the
+old app's bug farm: `editJob`'s zero-amount special case, `editSpool`'s missing
+bounds TODO — both gone by construction.)
 
 ---
 
@@ -214,13 +239,19 @@ and the app talks *to* it, not the other way round).
 ### Jobs
 | Method | Path                  | Body | Returns |
 |--------|-----------------------|------|---------|
-| GET    | `/api/jobs`           | — (optional `?spoolId=`) | `Job[]` |
-| POST   | `/api/jobs`           | `{ spoolId, name, filamentUsed (grams), date?, cost?, projectId? }` | 201 `Job` |
-| PATCH  | `/api/jobs/:id`       | partial (editing `filamentUsed` rebalances the spool; `projectId` moves it between projects) | `Job` |
-| DELETE | `/api/jobs/:id`       | —    | 204 (rebalances the spool) |
+| GET    | `/api/jobs`           | — (optional `?spoolId=`, joins `job_filaments`) | `Job[]` |
+| POST   | `/api/jobs`           | `{ name, filaments: [{ spoolId, filamentUsed (grams) }], date?, cost?, projectId? }` | 201 `Job` |
+| PATCH  | `/api/jobs/:id`       | partial (editing `filaments` rebalances the member spools; `projectId` moves it between projects) | `Job` |
+| DELETE | `/api/jobs/:id`       | —    | 204 (rebalances all member spools) |
 
-`Job` (API shape) = DB columns + `projectName?` (joined) — so lists can render
-a project badge without a second fetch.
+`Job` (API shape) = DB columns + `filaments[]` (each row + joined `spoolName`,
+`colourHex`) + derived totals `filamentUsedMg`, `costCents` + `projectName?`
+(joined) — so lists render a project badge and a per-spool breakdown without
+extra fetches.
+
+Cost: each filament's `costCents` is derived from its spool's unit price at
+create; an optional whole-job `cost` override replaces the derived total
+(pro-rated across filaments) — same semantics as before, one level deeper.
 
 ### Projects
 | Method | Path                | Body             | Returns |
@@ -235,9 +266,9 @@ a project badge without a second fetch.
 | Method | Path                        | Body |
 |--------|-----------------------------|------|
 | GET    | `/api/stagedJobs`           | — |
-| POST   | `/api/stagedJobs`           | `{ name, filamentUsed? (grams), date }` — manual entry (printer sync inserts directly in the DB layer) |
+| POST   | `/api/stagedJobs`           | `{ name, filaments?: [{ channel?, filamentUsed? (grams) }], date }` — manual entry (printer sync inserts directly in the DB layer) |
 | DELETE | `/api/stagedJobs/:id`       | — |
-| POST   | `/api/stagedJobs/:id/commit`| `{ spoolId, filamentUsed (grams), cost?, projectId? }` — creates the real job under `spoolId` (project if given), deletes the staged job. One transaction. |
+| POST   | `/api/stagedJobs/:id/commit`| `{ filaments: [{ spoolId, filamentUsed (grams) }], cost?, projectId? }` — creates the real job (one `job_filaments` row per spool, project if given), deletes the staged job. One transaction. |
 
 ### Settings (printers + AMS mappings)
 | Method | Path                  | Body | Returns |
@@ -283,8 +314,10 @@ backend/
     printer/
       watcher.ts        # one MQTT connection per printer: pushall + delta merge,
                         # gcode_state transition tracking, reconnect w/ backoff
-      ftps.ts           # fetch job file from the printer
-      gcode.ts          # header parser: object name, grams, AMS channel usage
+      ftps.ts           # fetch job file (*.gcode.3mf) from the printer
+      threeMf.ts        # unzip + slice_info.config: per-filament grams + colour,
+                        # channels used (primary source)
+      gcode.ts          # header parser fallback: object name, total grams
     validate/
       spool.ts          # validateCreateSpool / validateEditSpool → typed data | { issues }
       job.ts
@@ -322,9 +355,12 @@ frontend/
       printersApi.ts    # printers + ams-mappings
     features/
       spools/           # SpoolList, SpoolDetail, SpoolForm, SuggestionInputs
-      jobs/             # JobForm (with optional project picker), JobList (project badge), EditJobModal
+      jobs/             # JobForm (spool-allocation editor: spool + grams rows,
+                        # optional project picker), JobList (project badge +
+                        # per-spool breakdown), EditJobModal (same editor)
       projects/         # ProjectList, ProjectDetail (totals header + reused JobList)
-      staged/           # StagedJobList, CommitStagedJobFlow (spool pre-selected, optional project)
+      staged/           # StagedJobList, CommitStagedJobFlow (one row per staged
+                        # filament, spools pre-selected per channel, optional project)
       printer/          # PrinterForm, AmsMappingEditor (channel → spool pickers)
     pages/
       Home.tsx          # spool grid: active / finished, per-spool remaining bar
@@ -358,7 +394,8 @@ frontend/
 `shared/` — plain TS, no package.json of its own; both apps import it via path alias
 (`@shared` in tsconfig `paths` / Vite `resolve.alias`).
 
-- `types.ts` — `Spool`, `Job`, `Project`, `StagedJob`, `CreateSpoolInput`, …
+- `types.ts` — `Spool`, `Job` (with `JobFilament[]` + derived totals), `Project`,
+  `StagedJob` (with `filaments[]`), `CreateSpoolInput`, …
   (hand-written; single source of truth for both sides)
 - `normalize.ts` — `normMaterial/normColour/normFinish/normBrand` (used by backend
   validators; frontend previews the normalized value in the form)
@@ -385,13 +422,16 @@ spool: 750 g initial
 
 Plus: validator unit tests (missing fields, negative numbers, normalization applied),
 spool edit bounds test, staged-job commit transaction test (job created + staged
-deleted + spool debited in one shot), gcode-header parser tests (name + grams
-extraction, missing-grams and missing-name cases — same fixtures the printer sync
-uses), projects tests (totals SUM across spools, deleting a project keeps its jobs
-unassigned, reassigning a job moves totals between projects), and watcher
-transition tests (feed synthetic MQTT messages: `RUNNING → FINISH` fires the
-completion handler exactly once, `FAILED` is surfaced, `msg==1` deltas merge into
-the `msg==0` snapshot, reconnection after drop).
+deleted + spools debited in one shot), **multi-spool balance tests** (create a
+2-spool job → both debit; edit one filament; add a third filament to an existing
+job; delete → all rebalance; over-draft on any one spool rejects the whole job
+with nothing debited), projects tests (totals SUM across spools, deleting a
+project keeps its jobs unassigned, reassigning a job moves totals between
+projects), 3MF parser tests (per-filament grams + colour from `slice_info.config`,
+missing `slice_info` → gcode header fallback), and watcher transition tests (feed
+synthetic MQTT messages: `RUNNING → FINISH` fires the completion handler exactly
+once, `FAILED` is surfaced, `msg==1` deltas merge into the `msg==0` snapshot,
+reconnection after drop).
 
 Frontend: no formal suite initially — `vite build` + manual pass. (Personal project;
 don't build test infrastructure that won't be used.)
@@ -415,15 +455,33 @@ so the per-profile script config in Orca is gone for good.
   - `print.gcode_state`: `IDLE | PREPARE | RUNNING | PAUSE | FINISH | FAILED | …`
     → completion detection = a `RUNNING → FINISH` transition (`FAILED` is surfaced).
   - `print.subtask_name` = job name; `mc_percent` = progress; `hms` = active errors.
-  - The report has **no live "grams used" field**. The grams live in the gcode file
+  - The report has **no live "grams used" field**. The grams live in the file
     the slicer uploaded — see FTPS.
+  - **Multi-material is visible live** (device-verified against an X2D report
+    fixture + community libs):
+    - `print.mapping[]` — virtual extruder slot → physical tray (`65535` =
+      none/direct): which AMS channels the current job used.
+    - `print.job.stage[].color[]` — the job's filament colours (hex) — a colour
+      stripe for the staged-job UI.
+    - `print.ams.ams[].tray[]` — what is physically in each slot: `tray_color`
+      (RGBA hex), `tray_type` (`PLA`/`PETG`/…), `tray_info_idx` → used to
+      sanity-check `ams_mappings` at commit time.
+    - `print.vir_slot[]` — the direct-extruder spool (tray ids 254/255).
+    - `plate_cnt` / `plate_id` / `plate_idx` — multi-plate queue: each plate is
+      its own completion cycle → one staged job per plate.
 - **FTPS** — `ftp://<printer-ip>:990`, implicit TLS, same `bblp` + access code.
   - `/model` → `*.gcode.3mf` (a zip: `Metadata/plate_N.gcode` +
-    `Metadata/plate_N.json` carrying `bed_type` and `filament_colors`).
+    `Metadata/plate_N.json` carrying `bed_type` and `filament_colors`, and
+    `Metadata/slice_info.config` — XML with **per-filament usage per plate**:
+    `<filament id="1" color="#FF0000" used_g="14.21" used_m="4.823"/>` plus
+    per-plate total `weight` and time `prediction`). `slice_info.config` is the
+    primary source for multi-material grams; `project_settings.config`
+    (`filament_colour[]` / `filament_type[]`) carries the authoritative colours.
   - `/cache` → extracted per-plate `*_plate_N.gcode`.
   - The gcode header contains `; printing object <file>` and
-    `; filament used [g] = 14.82` — the app parses these from the file on the
-    printer (the same lines the old Orca script parsed, read from a better place).
+    `; filament used [g] = 14.82` — the **fallback** (single-filament path) when
+    `slice_info.config` is absent (the same lines the old Orca script parsed,
+    read from a better place).
   - Quirk (device-verified): the printer stamps FTPS-uploaded files with a
     non-wall-clock timestamp — **never** date a job from `MDTM`.
 - **SSDP** (optional): the printer announces on multicast `239.255.255.250` with
@@ -434,13 +492,15 @@ so the per-profile script config in Orca is gone for good.
 1. Settings: add printer (name, IP, serial, access code).
 2. Backend keeps one MQTT watcher per printer (connect, subscribe, merge
    snapshot + deltas, reconnect with backoff, dedupe by name + 24h).
-3. On `gcode_state → FINISH`: fetch the job file over FTPS (match `subtask_name`),
-   parse object name + grams; read AMS channel usage from the gcode's filament
-   mapping.
-4. Create a staged job `{ name, filamentUsedMg?, date, printerId, amsChannel? }`
-   — source = printer.
-5. Commit flow: spool **pre-selected** from `ams_mappings`; optional project
-   picker; grams entry shown only if the parse came up empty.
+3. On `gcode_state → FINISH`: fetch the job's `*.gcode.3mf` over FTPS (match
+   `subtask_name`), parse object name + per-filament grams/colours from
+   `slice_info.config` (gcode header fallback); channels used = the report's
+   `mapping[]` (non-empty entries).
+4. Create a staged job `{ name, filaments: [{ channel, mg? }], date, printerId }`
+   — one entry per channel the print used, source = printer.
+5. Commit flow: one row per staged filament, spool **pre-selected** from
+   `ams_mappings` per channel (tray colour/type shown for a sanity check);
+   optional project picker; grams shown per row, prefilled, editable.
 
 ---
 
@@ -491,9 +551,15 @@ Each phase ends in something runnable/reviewable.
    UI: projects page, project picker in job form + commit flow.
 6. **Staged jobs** — endpoints, commit flow UI, startup pruning, commit
    transaction test.
-7. **Printer sync** — settings + `printers`/`ams_mappings`, MQTT watcher,
-   completion detection, gcode grams parse, AMS pre-select.
-8. **Ship it** — Dockerfile + compose, deploy, cutover, smoke test.
+7. **Multi-material** — schema rebase (`job_filaments` + `staged_jobs.filaments`;
+   initial migration regenerated — no data exists yet), job logic/API with
+   `filaments[]`, spool-allocation editor in the job form, N-spool commit flow,
+   extended balance-invariant tests. Lands **before** printer sync: the watcher
+   and 3MF parser build on the multi-spool job shape.
+8. **Printer sync** — settings + `printers`/`ams_mappings`, MQTT watcher,
+   completion detection, 3MF `slice_info.config` per-filament parse, AMS
+   pre-select.
+9. **Ship it** — Dockerfile + compose, deploy, cutover, smoke test.
 
 ---
 
@@ -502,6 +568,8 @@ Each phase ends in something runnable/reviewable.
 | Item | Status |
 |------|--------|
 | `isFinished` semantics: manual flag only, or auto-set when left = 0? | Design: manual flag; auto-set as a possible nicety, not committed |
-| A1 (N2S) with full AMS: exact AMS-channel field names in the MQTT report (protocol notes above are from an A1 mini + AMS Lite) | Verify against the real A1 during phase 7 before writing the mapping UI |
+| A1 (N2S) with full AMS: exact AMS-channel field names in the MQTT report (protocol notes above are from an A1 mini + AMS Lite) | Verify against the real A1 during phase 8 before writing the mapping UI |
 | H2D/X2D (O1D) protocol parity (same MQTT report shape) | Same family of community docs; confirm on arrival |
 | better-sqlite3 native module in alpine runtime | Uses prebuilt binaries; if it fails, fall back to node:22-slim image |
+| `mapping[]` encoding across multiple AMS units (verified fixture is single-AMS: 0–3 = AMS-1 trays, `65535` = none) | Verify on-device (single-AMS + direct spool suffices for the user's A1) before relying on it for 2-AMS-class machines |
+| Multi-filament gcode header format (per-filament `; filament used [g]` lines?) — only matters as the fallback path | Verify on-device; `slice_info.config` is primary so this is low-risk |
