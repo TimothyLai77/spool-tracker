@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { db } from "../../src/db/client.js";
-import { jobs } from "../../src/db/schema.js";
+import { findJobById, listJobs } from "../../src/db/queries/jobs.js";
 import { createSpool, getSpool } from "../../src/logic/spools.js";
 import { createJob, deleteJob, editJob } from "../../src/logic/jobs.js";
 import type { CreateSpoolData } from "../../src/validate/spool.js";
@@ -63,7 +62,7 @@ const makeJobData = (spoolId: string, grams: number): CreateJobData => ({
  * Count the job rows currently in the database.
  * @returns The number of jobs.
  */
-const jobCount = (): number => db.select().from(jobs).all().length;
+const jobCount = (): number => listJobs(db).length;
 
 describe("balance invariant suite (DESIGN §9)", () => {
   it("create → edit → delete keeps the spool in lockstep, and over-drafts are rejected without touching the spool", () => {
@@ -118,7 +117,7 @@ describe("balance invariant suite (DESIGN §9)", () => {
     expect(getSpool(spool.id)?.usedMg).toBe(40_000);
     expect(getSpool(spool.id)?.leftMg).toBe(710_000);
     // Job untouched: the failed edit must not have rewritten its amount.
-    expect(db.select().from(jobs).where(eq(jobs.id, second.job.id)).get()?.filamentUsedMg).toBe(40_000);
+    expect(findJobById(db, second.job.id)?.filamentUsedMg).toBe(40_000);
   });
 
   it("allows a job of exactly the spool's full remaining weight (equal is legal)", () => {

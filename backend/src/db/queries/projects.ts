@@ -45,7 +45,8 @@ export const listProjects = (db: DbHandle): Project[] => {
     .from(projects)
     .leftJoin(jobs, eq(jobs.projectId, projects.id))
     .groupBy(projects.id)
-    .orderBy(asc(projects.name))
+    // Insertion order (rowid) breaks ties between identically named projects.
+    .orderBy(asc(projects.name), sql`projects.rowid`)
     .all();
 };
 
@@ -78,7 +79,7 @@ export const listProjectJobs = (db: DbHandle, projectId: string): Job[] => {
     .from(jobs)
     .leftJoin(projects, eq(jobs.projectId, projects.id))
     .where(eq(jobs.projectId, projectId))
-    .orderBy(desc(jobs.date), desc(jobs.createdAt))
+    .orderBy(desc(jobs.date), desc(jobs.createdAt), sql`jobs.rowid DESC`)
     .all();
 };
 

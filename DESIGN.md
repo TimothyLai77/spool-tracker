@@ -274,6 +274,7 @@ backend/
         spools.ts       # all Drizzle for the spools table (selects, joins, DML)
         jobs.ts         # all Drizzle for the jobs table (incl. the jobSelect join)
         projects.ts     # all Drizzle for the projects table (totals aggregates)
+        stagedJobs.ts   # all Drizzle for the staged_jobs table (incl. the TTL prune)
     routes/
       spools.ts
       jobs.ts

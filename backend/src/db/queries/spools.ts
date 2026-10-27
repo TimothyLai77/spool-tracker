@@ -51,7 +51,9 @@ export const listSpools = (db: DbHandle): Spool[] => {
     .from(spools)
     .leftJoin(jobs, eq(jobs.spoolId, spools.id))
     .groupBy(spools.id)
-    .orderBy(desc(spools.createdAt))
+    // `createdAt DESC`, then insertion order (rowid) DESC, so spools created in
+    // the same millisecond keep a stable newest-first order.
+    .orderBy(desc(spools.createdAt), sql`spools.rowid DESC`)
     .all();
 };
 

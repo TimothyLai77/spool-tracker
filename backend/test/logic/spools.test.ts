@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { db } from "../../src/db/client.js";
-import { jobs, spools } from "../../src/db/schema.js";
+import { insertJob, listJobs } from "../../src/db/queries/jobs.js";
+import { updateSpoolById } from "../../src/db/queries/spools.js";
 import type { CreateSpoolData } from "../../src/validate/spool.js";
 import {
   createSpool,
@@ -42,28 +42,27 @@ const makeCreateData = (overrides: Partial<CreateSpoolData> = {}): CreateSpoolDa
 });
 
 /**
- * Seed a job row directly (job logic lands in T6) so a spool carries usage.
- * Keeps the spool's `usedMg` in lockstep with the job, as the invariant
- * requires.
+ * Seed a job row through the queries layer (job *logic* lands in T6) so a
+ * spool carries usage. Keeps the spool's `usedMg` in lockstep with the job, as
+ * the invariant requires — the test mints the ids/timestamps the logic layer
+ * normally owns.
  * @param spoolId The spool the job belongs to.
  * @param usedMg Filament consumed by the job.
  */
 const seedJob = (spoolId: string, usedMg: number): void => {
   const now = new Date().toISOString();
-  db.insert(jobs)
-    .values({
-      id: crypto.randomUUID(),
-      name: "seeded job",
-      spoolId,
-      projectId: null,
-      filamentUsedMg: usedMg,
-      costCents: 0,
-      date: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
-  db.update(spools).set({ usedMg }).where(eq(spools.id, spoolId)).run();
+  insertJob(db, {
+    id: crypto.randomUUID(),
+    name: "seeded job",
+    spoolId,
+    projectId: null,
+    filamentUsedMg: usedMg,
+    costCents: 0,
+    date: now,
+    createdAt: now,
+    updatedAt: now,
+  });
+  updateSpoolById(db, spoolId, { usedMg });
 };
 
 describe("createSpool", () => {
@@ -179,7 +178,7 @@ describe("deleteSpool", () => {
     expect(deleteSpool(spool.id)).toEqual({ status: "ok" });
     expect(getSpool(spool.id)).toBeUndefined();
 
-    const jobRows = db.select().from(jobs).where(eq(jobs.spoolId, spool.id)).all();
+    const jobRows = listJobs(db, spool.id);
     expect(jobRows).toHaveLength(0);
   });
 

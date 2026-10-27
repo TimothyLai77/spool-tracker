@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { jobs, projects } from "../schema.js";
 import type { DbHandle } from "../handle.js";
 import type { Job, JobRow } from "@shared/types.js";
@@ -44,7 +44,11 @@ export const jobSelect = {
 export const listJobs = (db: DbHandle, spoolId?: string): Job[] => {
   const query = db.select(jobSelect).from(jobs).leftJoin(projects, eq(jobs.projectId, projects.id));
   const filtered = spoolId === undefined ? query : query.where(eq(jobs.spoolId, spoolId));
-  return filtered.orderBy(desc(jobs.date), desc(jobs.createdAt)).all();
+  // Insertion order (rowid) as the final tie-break: jobs created in the same
+  // millisecond share a `date` and a `createdAt`, and SQLite leaves those unordered.
+  return filtered
+    .orderBy(desc(jobs.date), desc(jobs.createdAt), sql`jobs.rowid DESC`)
+    .all();
 };
 
 /**
