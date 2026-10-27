@@ -45,14 +45,15 @@ const spoolSelect = {
  * @param db The database or transaction to read.
  * @returns The `Spool` API shapes (`createdAt DESC`).
  */
-export const listSpools = (db: DbHandle): Spool[] =>
-  db
+export const listSpools = (db: DbHandle): Spool[] => {
+  return db
     .select(spoolSelect)
     .from(spools)
     .leftJoin(jobs, eq(jobs.spoolId, spools.id))
     .groupBy(spools.id)
     .orderBy(desc(spools.createdAt))
     .all();
+};
 
 /**
  * One spool with its derived fields.
@@ -60,14 +61,15 @@ export const listSpools = (db: DbHandle): Spool[] =>
  * @param id Spool id.
  * @returns The `Spool` API shape, or undefined when it does not exist.
  */
-export const findSpoolById = (db: DbHandle, id: string): Spool | undefined =>
-  db
+export const findSpoolById = (db: DbHandle, id: string): Spool | undefined => {
+  return db
     .select(spoolSelect)
     .from(spools)
     .leftJoin(jobs, eq(jobs.spoolId, spools.id))
     .where(eq(spools.id, id))
     .groupBy(spools.id)
     .get();
+};
 
 /**
  * Insert a fully-formed spool row (id and timestamps supplied by the caller).
@@ -86,8 +88,9 @@ export const insertSpool = (db: DbHandle, row: SpoolRow): void => {
  * @param changes Columns to change (never includes the id).
  * @returns The number of rows affected (0 when the id is absent).
  */
-export const updateSpoolById = (db: DbHandle, id: string, changes: Partial<SpoolRow>): number =>
-  db.update(spools).set(changes).where(eq(spools.id, id)).run().changes;
+export const updateSpoolById = (db: DbHandle, id: string, changes: Partial<SpoolRow>): number => {
+  return db.update(spools).set(changes).where(eq(spools.id, id)).run().changes;
+};
 
 /**
  * Delete one spool. Its jobs (and `ams_mappings`) cascade via FK rules.
@@ -95,8 +98,9 @@ export const updateSpoolById = (db: DbHandle, id: string, changes: Partial<Spool
  * @param id Spool id.
  * @returns The number of rows affected (0 when the id is absent).
  */
-export const deleteSpoolById = (db: DbHandle, id: string): number =>
-  db.delete(spools).where(eq(spools.id, id)).run().changes;
+export const deleteSpoolById = (db: DbHandle, id: string): number => {
+  return db.delete(spools).where(eq(spools.id, id)).run().changes;
+};
 
 /**
  * Distinct stored attribute values for form suggestions (DESIGN §5).
