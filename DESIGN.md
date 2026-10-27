@@ -269,6 +269,9 @@ backend/
       schema.ts         # drizzle schema (tables above)
       client.ts         # better-sqlite3 (WAL) + drizzle instance; path from DATA_DIR env
       migrate.ts        # drizzle-kit migrations run on boot (idempotent)
+      handle.ts         # DbHandle = app db | tx — the first argument of every query
+      queries/
+        spools.ts       # all Drizzle for the spools table (selects, joins, DML)
     routes/
       spools.ts
       jobs.ts
@@ -280,6 +283,8 @@ backend/
       jobs.ts
       projects.ts
       stagedJobs.ts
+      # logic/* = rules only: transactions, ids, timestamps, balance checks,
+      # `status` results. Zero Drizzle operators; the SQL lives in db/queries/*.
     printer/
       watcher.ts        # one MQTT connection per printer: pushall + delta merge,
                         # gcode_state transition tracking, reconnect w/ backoff
@@ -297,6 +302,19 @@ backend/
 - **Validation**: `validateX(body)` returns `{ data }` or `{ issues }` — no exceptions
   for expected bad input. Normalization (casing) happens *inside* the validators so it
   can't be bypassed.
+- **Layer rules** (`routes` → `validate` → `logic` → `db/queries`):
+
+  | Layer | Owns | Never contains |
+  | --- | --- | --- |
+  | `db/queries/*` | every Drizzle statement — selects, joins, aggregates, inserts, updates, deletes — and assembling the API shape (derived fields computed in SQL) | the `db` singleton, transactions, `Date.now()`, `randomUUID()`, `ApiIssue`s |
+  | `logic/*` | transactions, ids, timestamps, balance checks, business rules, `status` result unions | `eq` / `sql` / `count`, joins, `groupBy` |
+  | `routes/*` | parse → validate → call → status map | validation, SQL |
+
+  Each query function takes a `DbHandle` (the app database, **or** an open
+  transaction on it) as its first argument, so `logic/*` decides where the statement
+  runs: `tx` for statements that must be atomic, `db` for the rest. Only `logic/*`
+  imports the `db` singleton, which keeps the test suite's per-test database swap
+  confined to one layer — and lets a test hand its own handle straight to a query.
 - **Transactions**: better-sqlite3 is synchronous — `db.transaction(() => {...})`
   wraps the spool+job mutations atomically. No async race between the two writes.
 - **Staged-job pruning**: delete `staged_jobs` older than `STAGED_JOB_TTL_DAYS`

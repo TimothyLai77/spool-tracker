@@ -1,6 +1,5 @@
-import { count, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { jobs, spools } from "../db/schema.js";
+import * as spoolQueries from "../db/queries/spools.js";
 import type { ApiIssue } from "@shared/api.js";
 import type { Spool, SpoolAttributes } from "@shared/types.js";
 import type { CreateSpoolData, EditSpoolData } from "../validate/spool.js";
@@ -8,8 +7,12 @@ import type { CreateSpoolData, EditSpoolData } from "../validate/spool.js";
 /**
  * Spool business logic (DESIGN.md §4, §5, §6).
  *
- * All mutations live here (never in routes). Reads compute the derived API
- * fields (`leftMg`, `jobCount`) on the fly — they are never stored.
+ * All mutations live here (never in routes). This module owns the rules —
+ * transactions, ids, timestamps, the balance invariant, the `status` results
+ * routes map to HTTP codes — and delegates every SQL statement to
+ * `db/queries/spools.ts`, passing `tx` inside a transaction and `db` outside
+ * one. Derived API fields (`leftMg`, `jobCount`) are computed by the query
+ * layer on read and are never stored.
  *
  * The balance invariant: a spool's `initialWeightMg` can never be edited
  * below its `usedMg`. Enforced transactionally in `editSpool` — the check and
@@ -25,65 +28,18 @@ export type SpoolMutationResult =
   | { status: "issues"; issues: ApiIssue[] };
 
 /**
- * Attach the derived API fields to a row. At runtime derives the amount of filament left in a spool
- * Derive at runtime to prevent messy two truths with storing filamentUsed & filamentLeft
- * @param row The `spools` table row.
- * @param jobCount The number of jobs on the spool.
- * @returns The API `Spool` shape.
- */
-const attachDerivedFields = (row: typeof spools.$inferSelect, jobCount: number): Spool => ({
-  ...row,
-  leftMg: row.initialWeightMg - row.usedMg,
-  jobCount,
-});
-
-/**
- * Job counts per spool as a `spoolId → count` map. One grouped query instead
- * of one count per spool.
- * @returns A Map of spool id to job count (absent ids have 0 jobs).
- */
-const jobCountsBySpool = (): Map<string, number> => {
-  const rows = db
-    .select({ spoolId: jobs.spoolId, n: count() })
-    .from(jobs)
-    .groupBy(jobs.spoolId)
-    .all();
-  return new Map(rows.map((r) => [r.spoolId, r.n]));
-};
-
-/**
- * Resolve one spool row to the `Spool` API shape (or undefined when absent).
- * @param id Spool id.
- * @returns The `Spool` API shape, or undefined.
- */
-const getSpoolById = (id: string): Spool | undefined => {
-  const row = db.select().from(spools).where(eq(spools.id, id)).get();
-  if (!row) return undefined;
-  return attachDerivedFields(row, jobCountsBySpool().get(id) ?? 0);
-};
-
-/**
  * List all spools (active and finished), most recently created first, with
  * derived `leftMg` and `jobCount`.
  * @returns The `Spool` API shapes.
  */
-export const listSpools = (): Spool[] => {
-  const rows = db
-    .select()
-    .from(spools)
-    .orderBy(spools.createdAt)
-    .all()
-    .reverse(); // SQLite TEXT order is lexicographic; ISO strings sort ascending, so reverse for newest-first
-  const counts = jobCountsBySpool();
-  return rows.map((row) => attachDerivedFields(row, counts.get(row.id) ?? 0));
-};
+export const listSpools = (): Spool[] => spoolQueries.listSpools(db);
 
 /**
  * Fetch a single spool by id.
  * @param id Spool id.
  * @returns The `Spool` API shape, or undefined when it does not exist.
  */
-export const getSpool = (id: string): Spool | undefined => getSpoolById(id);
+export const getSpool = (id: string): Spool | undefined => spoolQueries.findSpoolById(db, id);
 
 /**
  * Insert a new spool from validated create data.
@@ -93,25 +49,23 @@ export const getSpool = (id: string): Spool | undefined => getSpoolById(id);
 export const createSpool = (data: CreateSpoolData): Spool => {
   const now = new Date().toISOString();
   const id = crypto.randomUUID();
-  db.insert(spools)
-    .values({
-      id,
-      name: data.name,
-      brand: data.brand,
-      material: data.material,
-      colour: data.colour,
-      colourHex: data.colourHex,
-      finish: data.finish,
-      initialWeightMg: data.initialWeightMg,
-      usedMg: 0,
-      costCents: data.costCents,
-      isFinished: false,
-      notes: data.notes,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .run();
-  return getSpoolById(id) as Spool;
+  spoolQueries.insertSpool(db, {
+    id,
+    name: data.name,
+    brand: data.brand,
+    material: data.material,
+    colour: data.colour,
+    colourHex: data.colourHex,
+    finish: data.finish,
+    initialWeightMg: data.initialWeightMg,
+    usedMg: 0,
+    costCents: data.costCents,
+    isFinished: false,
+    notes: data.notes,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return spoolQueries.findSpoolById(db, id)!;
 };
 
 /**
@@ -121,36 +75,32 @@ export const createSpool = (data: CreateSpoolData): Spool => {
  * `initialWeightMg`, the check `usedMg ≤ new initialWeightMg` and the update
  * run in one transaction. An over-draft returns `{ status: "issues" }` and
  * the spool is untouched.
- *
  * @param id Spool id.
  * @param data Canonical partial from `validateEditSpool`.
  * @returns `ok` with the updated spool, `not-found`, or `issues` (→ 400).
  */
 export const editSpool = (id: string, data: EditSpoolData): SpoolMutationResult => {
   return db.transaction((tx) => {
-    const row = tx.select().from(spools).where(eq(spools.id, id)).get();
-    if (!row) return { status: "not-found" as const };
+    const spool = spoolQueries.findSpoolById(tx, id);
+    if (!spool) return { status: "not-found" as const };
 
-    if (data.initialWeightMg !== undefined && data.initialWeightMg < row.usedMg) {
+    if (data.initialWeightMg !== undefined && data.initialWeightMg < spool.usedMg) {
       return {
         status: "issues" as const,
         issues: [
           {
             field: "initialWeightGrams",
-            message: `initialWeightGrams cannot be less than the ${row.usedMg / 1000} g already used`,
+            message: `initialWeightGrams cannot be less than the ${spool.usedMg / 1000} g already used`,
           },
         ],
       };
     }
 
-    tx.update(spools)
-      .set({ ...data, updatedAt: new Date().toISOString() })
-      .where(eq(spools.id, id))
-      .run();
+    spoolQueries.updateSpoolById(tx, id, { ...data, updatedAt: new Date().toISOString() });
 
-    // Re-read through the outer `db` handle for the derived fields (same
-    // connection, so the transaction's write is visible).
-    return { status: "ok" as const, spool: getSpoolById(id) as Spool };
+    // Re-read through the same transaction handle, so the write is visible and
+    // the derived `leftMg` / `jobCount` reflect the post-edit state.
+    return { status: "ok" as const, spool: spoolQueries.findSpoolById(tx, id)! };
   });
 };
 
@@ -162,15 +112,11 @@ export const editSpool = (id: string, data: EditSpoolData): SpoolMutationResult 
  * @returns `ok` with the updated spool, or `not-found`.
  */
 export const finishSpool = (id: string): Extract<SpoolMutationResult, { status: "ok" | "not-found" }> => {
-  const row = db.select().from(spools).where(eq(spools.id, id)).get();
-  if (!row) return { status: "not-found" };
+  if (!spoolQueries.findSpoolById(db, id)) return { status: "not-found" };
 
-  db.update(spools)
-    .set({ isFinished: true, updatedAt: new Date().toISOString() })
-    .where(eq(spools.id, id))
-    .run();
+  spoolQueries.updateSpoolById(db, id, { isFinished: true, updatedAt: new Date().toISOString() });
 
-  return { status: "ok", spool: getSpoolById(id) as Spool };
+  return { status: "ok", spool: spoolQueries.findSpoolById(db, id)! };
 };
 
 /**
@@ -179,8 +125,7 @@ export const finishSpool = (id: string): Extract<SpoolMutationResult, { status: 
  * @returns `ok` when deleted, or `not-found`.
  */
 export const deleteSpool = (id: string): { status: "ok" } | { status: "not-found" } => {
-  const result = db.delete(spools).where(eq(spools.id, id)).run();
-  return result.changes > 0 ? { status: "ok" } : { status: "not-found" };
+  return spoolQueries.deleteSpoolById(db, id) > 0 ? { status: "ok" } : { status: "not-found" };
 };
 
 /**
@@ -188,17 +133,4 @@ export const deleteSpool = (id: string): { status: "ok" } | { status: "not-found
  * Sorted for stable lists; null finishes excluded.
  * @returns `{ brands, materials, colours, finishes }`.
  */
-export const getSpoolAttributes = (): SpoolAttributes => {
-  // De-dup in JS: the tables are small (single-user spool shelf), so this is
-  // simpler than four separate DISTINCT queries and one pass over the columns.
-  const rows = db.select().from(spools).all();
-  const unique = (values: (string | null)[]): string[] =>
-    [...new Set(values.filter((v): v is string => v !== null))].sort();
-
-  return {
-    brands: unique(rows.map((r) => r.brand)),
-    materials: unique(rows.map((r) => r.material)),
-    colours: unique(rows.map((r) => r.colour)),
-    finishes: unique(rows.map((r) => r.finish)),
-  };
-}
+export const getSpoolAttributes = (): SpoolAttributes => spoolQueries.listSpoolAttributes(db);
