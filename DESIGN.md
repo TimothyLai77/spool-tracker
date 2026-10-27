@@ -272,6 +272,7 @@ backend/
       handle.ts         # DbHandle = app db | tx — the first argument of every query
       queries/
         spools.ts       # all Drizzle for the spools table (selects, joins, DML)
+        jobs.ts         # all Drizzle for the jobs table (incl. the jobSelect join)
     routes/
       spools.ts
       jobs.ts
