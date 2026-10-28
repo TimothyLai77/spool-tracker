@@ -73,6 +73,9 @@ Decisions made during planning (so future-me remembers *why*):
 - Printer sync: the app dials **out** to the printer (MQTT :8883, FTPS :990, LAN
   only). The printer never calls us — no new inbound surface. (The old app's
   Orcaslicer script is dropped entirely — no more per-profile script config.)
+- Backend request path: `routes` → `validate` → `logic` → `db/queries` → SQLite.
+  Rules (transactions, ids, timestamps, balance checks) live in `logic`, all SQL
+  lives in `db/queries`; layer rules in §6.
 
 ---
 
@@ -95,7 +98,8 @@ Decisions made during planning (so future-me remembers *why*):
   title-casing would mangle.
 - Derived values are **never stored**: `leftMg = initialWeightMg - usedMg`,
   `jobCount = count(jobs)`, project totals = `SUM()` over member jobs.
-  (Old app stored the spool ones and drifted.)
+  (Old app stored the spool ones and drifted.) They are computed in SQL, in the
+  read path (`db/queries/*`), so the API shape is assembled in one place per table.
 
 ### `spools`
 | column          | type    | notes |
@@ -394,6 +398,12 @@ frontend/
 
 vitest + in-memory better-sqlite3 (fresh DB per test).
 
+Tests go through the same doors as the app: fixtures seed with the query layer's
+own functions (`insertJob(db, row)`, `updateSpoolById(db, id, …)`) and assert with
+`listJobs(db)` / `findJobById(db, id)`, so no test builds a Drizzle chain. Because
+query functions take a `DbHandle` as their first argument (§6), a test can also
+hand a query its own database instance directly.
+
 **Balance invariant suite** (the core of the app's correctness):
 ```
 spool: 750 g initial
@@ -459,7 +469,8 @@ so the per-profile script config in Orca is gone for good.
    parse object name + grams; read AMS channel usage from the gcode's filament
    mapping.
 4. Create a staged job `{ name, filamentUsedMg?, date, printerId, amsChannel? }`
-   — source = printer.
+   — source = printer (inserted via `db/queries/stagedJobs.ts`, same layer the
+   manual-entry flow uses).
 5. Commit flow: spool **pre-selected** from `ams_mappings`; optional project
    picker; grams entry shown only if the parse came up empty.
 
