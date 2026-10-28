@@ -1,8 +1,7 @@
-import { desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { stagedJobs } from "../db/schema.js";
+import * as stagedJobQueries from "../db/queries/stagedJobs.js";
 import type { ApiIssue } from "@shared/api.js";
-import type { Job, StagedJob } from "@shared/types.js";
+import type { Job, StagedJob, StagedJobRow } from "@shared/types.js";
 import { createJob } from "./jobs.js";
 import type {
   CommitStagedJobData,
@@ -20,6 +19,8 @@ import type {
  *   check staged exists · check spool exists · check project exists ·
  *   check no over-draft · `usedMg += amt` · insert job · delete staged
  *
+ * This module owns the rules (ids, timestamps, the `status` results routes map
+ * to HTTP codes) and delegates every SQL statement to `db/queries/stagedJobs.js`.
  * The job half reuses `logic/jobs.ts` `createJob` nested inside the commit
  * transaction (better-sqlite3 maps the nesting to a SAVEPOINT — the commit
  * remains one BEGIN/COMMIT). Any failure path (404 / over-draft / bad
@@ -42,13 +43,7 @@ export type StagedJobDeleteResult = { status: "ok" } | { status: "not-found" };
  * List staged jobs, most recent first.
  * @returns The staged jobs.
  */
-export const listStagedJobs = (): StagedJob[] => {
-  return db
-    .select()
-    .from(stagedJobs)
-    .orderBy(desc(stagedJobs.createdAt), desc(stagedJobs.id))
-    .all();
-};
+export const listStagedJobs = (): StagedJob[] => stagedJobQueries.listStagedJobs(db);
 
 /**
  * Create a manually entered staged job. `printerId` and `amsChannel` are
@@ -57,21 +52,18 @@ export const listStagedJobs = (): StagedJob[] => {
  * @returns The created staged job.
  */
 export const createStagedJob = (data: CreateStagedJobData): StagedJobCreateResult => {
-  const now = new Date().toISOString();
-  const id = crypto.randomUUID();
-  db.insert(stagedJobs)
-    .values({
-      id,
-      name: data.name,
-      filamentUsedMg: data.filamentUsedMg,
-      date: data.date,
-      printerId: null,
-      amsChannel: null,
-      createdAt: now,
-    })
-    .run();
-  const staged = db.select().from(stagedJobs).where(eq(stagedJobs.id, id)).get();
-  return { status: "ok", staged: staged as StagedJob };
+  const row: StagedJobRow = {
+    id: crypto.randomUUID(),
+    name: data.name,
+    filamentUsedMg: data.filamentUsedMg,
+    date: data.date,
+    printerId: null,
+    amsChannel: null,
+    createdAt: new Date().toISOString(),
+  };
+  stagedJobQueries.insertStagedJob(db, row);
+
+  return { status: "ok", staged: stagedJobQueries.findStagedJobById(db, row.id)! };
 };
 
 /**
@@ -80,8 +72,7 @@ export const createStagedJob = (data: CreateStagedJobData): StagedJobCreateResul
  * @returns `ok` when deleted, or `not-found`.
  */
 export const deleteStagedJob = (id: string): StagedJobDeleteResult => {
-  const deleted = db.delete(stagedJobs).where(eq(stagedJobs.id, id)).run();
-  return deleted.changes > 0 ? { status: "ok" } : { status: "not-found" };
+  return stagedJobQueries.deleteStagedJobById(db, id) > 0 ? { status: "ok" } : { status: "not-found" };
 };
 
 /**
@@ -102,7 +93,7 @@ export const commitStagedJob = (
   data: CommitStagedJobData
 ): CommitStagedJobResult => {
   return db.transaction((tx) => {
-    const staged = tx.select().from(stagedJobs).where(eq(stagedJobs.id, id)).get();
+    const staged = stagedJobQueries.findStagedJobById(tx, id);
     if (!staged) return { status: "not-found" as const };
 
     // Nested transaction → SAVEPOINT on the same connection, so this is all
@@ -119,7 +110,7 @@ export const commitStagedJob = (
     });
     if (jobResult.status !== "ok") return jobResult;
 
-    tx.delete(stagedJobs).where(eq(stagedJobs.id, id)).run();
+    stagedJobQueries.deleteStagedJobById(tx, id);
 
     return { status: "ok" as const, job: jobResult.job };
   });

@@ -73,6 +73,9 @@ Decisions made during planning (so future-me remembers *why*):
 - Printer sync: the app dials **out** to the printer (MQTT :8883, FTPS :990, LAN
   only). The printer never calls us — no new inbound surface. (The old app's
   Orcaslicer script is dropped entirely — no more per-profile script config.)
+- Backend request path: `routes` → `validate` → `logic` → `db/queries` → SQLite.
+  Rules (transactions, ids, timestamps, balance checks) live in `logic`, all SQL
+  lives in `db/queries`; layer rules in §6.
 
 ---
 
@@ -95,7 +98,8 @@ Decisions made during planning (so future-me remembers *why*):
   title-casing would mangle.
 - Derived values are **never stored**: `leftMg = initialWeightMg - usedMg`,
   `jobCount = count(jobs)`, project totals = `SUM()` over member jobs.
-  (Old app stored the spool ones and drifted.)
+  (Old app stored the spool ones and drifted.) They are computed in SQL, in the
+  read path (`db/queries/*`), so the API shape is assembled in one place per table.
 
 ### `spools`
 | column          | type    | notes |
@@ -269,6 +273,12 @@ backend/
       schema.ts         # drizzle schema (tables above)
       client.ts         # better-sqlite3 (WAL) + drizzle instance; path from DATA_DIR env
       migrate.ts        # drizzle-kit migrations run on boot (idempotent)
+      handle.ts         # DbHandle = app db | tx — the first argument of every query
+      queries/
+        spools.ts       # all Drizzle for the spools table (selects, joins, DML)
+        jobs.ts         # all Drizzle for the jobs table (incl. the jobSelect join)
+        projects.ts     # all Drizzle for the projects table (totals aggregates)
+        stagedJobs.ts   # all Drizzle for the staged_jobs table (incl. the TTL prune)
     routes/
       spools.ts
       jobs.ts
@@ -280,6 +290,8 @@ backend/
       jobs.ts
       projects.ts
       stagedJobs.ts
+      # logic/* = rules only: transactions, ids, timestamps, balance checks,
+      # `status` results. Zero Drizzle operators; the SQL lives in db/queries/*.
     printer/
       watcher.ts        # one MQTT connection per printer: pushall + delta merge,
                         # gcode_state transition tracking, reconnect w/ backoff
@@ -297,6 +309,19 @@ backend/
 - **Validation**: `validateX(body)` returns `{ data }` or `{ issues }` — no exceptions
   for expected bad input. Normalization (casing) happens *inside* the validators so it
   can't be bypassed.
+- **Layer rules** (`routes` → `validate` → `logic` → `db/queries`):
+
+  | Layer | Owns | Never contains |
+  | --- | --- | --- |
+  | `db/queries/*` | every Drizzle statement — selects, joins, aggregates, inserts, updates, deletes — and assembling the API shape (derived fields computed in SQL) | the `db` singleton, transactions, `Date.now()`, `randomUUID()`, `ApiIssue`s |
+  | `logic/*` | transactions, ids, timestamps, balance checks, business rules, `status` result unions | `eq` / `sql` / `count`, joins, `groupBy` |
+  | `routes/*` | parse → validate → call → status map | validation, SQL |
+
+  Each query function takes a `DbHandle` (the app database, **or** an open
+  transaction on it) as its first argument, so `logic/*` decides where the statement
+  runs: `tx` for statements that must be atomic, `db` for the rest. Only `logic/*`
+  imports the `db` singleton, which keeps the test suite's per-test database swap
+  confined to one layer — and lets a test hand its own handle straight to a query.
 - **Transactions**: better-sqlite3 is synchronous — `db.transaction(() => {...})`
   wraps the spool+job mutations atomically. No async race between the two writes.
 - **Staged-job pruning**: delete `staged_jobs` older than `STAGED_JOB_TTL_DAYS`
@@ -373,6 +398,12 @@ frontend/
 
 vitest + in-memory better-sqlite3 (fresh DB per test).
 
+Tests go through the same doors as the app: fixtures seed with the query layer's
+own functions (`insertJob(db, row)`, `updateSpoolById(db, id, …)`) and assert with
+`listJobs(db)` / `findJobById(db, id)`, so no test builds a Drizzle chain. Because
+query functions take a `DbHandle` as their first argument (§6), a test can also
+hand a query its own database instance directly.
+
 **Balance invariant suite** (the core of the app's correctness):
 ```
 spool: 750 g initial
@@ -438,7 +469,8 @@ so the per-profile script config in Orca is gone for good.
    parse object name + grams; read AMS channel usage from the gcode's filament
    mapping.
 4. Create a staged job `{ name, filamentUsedMg?, date, printerId, amsChannel? }`
-   — source = printer.
+   — source = printer (inserted via `db/queries/stagedJobs.ts`, same layer the
+   manual-entry flow uses).
 5. Commit flow: spool **pre-selected** from `ams_mappings`; optional project
    picker; grams entry shown only if the parse came up empty.
 

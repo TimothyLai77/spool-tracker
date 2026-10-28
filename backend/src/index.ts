@@ -1,8 +1,7 @@
 import express from "express";
-import { lt } from "drizzle-orm";
 import { db } from "./db/client.js";
+import * as stagedJobQueries from "./db/queries/stagedJobs.js";
 import { runMigrations } from "./db/migrate.js";
-import { stagedJobs } from "./db/schema.js";
 import { spoolsRouter } from "./routes/spools.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { projectsRouter } from "./routes/projects.js";
@@ -28,7 +27,7 @@ const parseTtlDays = (raw: string | undefined, fallback: number): number => {
 const pruneStagedJobs = (): void => {
   const ttlDays = parseTtlDays(process.env.STAGED_JOB_TTL_DAYS, 3);
   const cutoff = new Date(Date.now() - ttlDays * 24 * 60 * 60 * 1000).toISOString();
-  db.delete(stagedJobs).where(lt(stagedJobs.createdAt, cutoff)).run();
+  stagedJobQueries.deleteStagedJobsOlderThan(db, cutoff);
 }
 
 /**

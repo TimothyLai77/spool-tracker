@@ -1,23 +1,27 @@
-import { desc, eq } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { jobs, projects, spools } from "../db/schema.js";
+import * as jobQueries from "../db/queries/jobs.js";
+import * as spoolQueries from "../db/queries/spools.js";
 import { mgToGrams } from "@shared/units.js";
 import type { ApiIssue } from "@shared/api.js";
-import type { Job } from "@shared/types.js";
+import type { Job, JobRow } from "@shared/types.js";
 import type { CreateJobData, EditJobData } from "../validate/job.js";
 
 /**
  * Job business logic (DESIGN.md §4, §5, §6).
  *
- * All mutations live here (never in routes). Every job mutation is a single
- * synchronous better-sqlite3 transaction that touches *both* the job and its
- * spool — that is what enforces the balance invariant (DESIGN §4 invariant
- * table):
+ * All mutations live here (never in routes). This module owns the rules —
+ * transactions, ids, timestamps, the balance checks, the `status` results
+ * routes map to HTTP codes — and delegates every SQL statement to
+ * `db/queries/jobs.ts` (and `db/queries/spools.ts` for the balance writes),
+ * passing `tx` inside a transaction and `db` outside one.
+ *
+ * Every job mutation is a single synchronous better-sqlite3 transaction that
+ * touches *both* the job and its spool — that is what enforces the balance
+ * invariant (DESIGN §4 invariant table):
  *
  *   create: check spool exists · check `usedMg + amt ≤ initialWeightMg` ·
  *           `usedMg += amt` · insert job
- *   edit:   `delta = oldAmt − newAmt` · check bounds · `usedMg += delta` ·
- *           update job
+ *   edit:   `delta = oldAmt − newAmt` · check bounds · `usedMg += delta` · update job
  *   delete: `usedMg −= amt` · delete job
  *
  * Over-draft returns `{ status: "issues" }` (routes map that to a 400) and
@@ -35,51 +39,11 @@ export type JobMutationResult =
 export type JobDeleteResult = { status: "ok" } | { status: "not-found" };
 
 /**
- * Select columns for the `Job` API shape: job row columns plus the joined
- * project name (null when the job is unassigned — the opt-in, DESIGN §4).
- */
-const jobSelect = {
-  id: jobs.id,
-  name: jobs.name,
-  spoolId: jobs.spoolId,
-  projectId: jobs.projectId,
-  filamentUsedMg: jobs.filamentUsedMg,
-  costCents: jobs.costCents,
-  date: jobs.date,
-  createdAt: jobs.createdAt,
-  updatedAt: jobs.updatedAt,
-  projectName: projects.name,
-};
-
-/**
- * Resolve one job to its `Job` API shape (or undefined when it does not exist).
- * @param id Job id.
- * @returns The `Job` API shape, or undefined.
- */
-const getJob = (id: string): Job | undefined => {
-  const row = db
-    .select(jobSelect)
-    .from(jobs)
-    .leftJoin(projects, eq(jobs.projectId, projects.id))
-    .where(eq(jobs.id, id))
-    .get();
-  return row as Job | undefined;
-};
-
-/**
  * List jobs, most recent print date first, with the joined `projectName`.
  * @param spoolId When given, only jobs on that spool (the `?spoolId=` filter).
  * @returns The `Job` API shapes.
  */
-export const listJobs = (spoolId?: string): Job[] => {
-  const all = db
-    .select(jobSelect)
-    .from(jobs)
-    .leftJoin(projects, eq(jobs.projectId, projects.id))
-    .orderBy(desc(jobs.date), desc(jobs.createdAt));
-  const query = spoolId === undefined ? all : all.where(eq(jobs.spoolId, spoolId));
-  return query.all() as Job[];
-};
+export const listJobs = (spoolId?: string): Job[] => jobQueries.listJobs(db, spoolId);
 
 /**
  * Build the 400 issue for an over-draft job amount (DESIGN §4: the spool's
@@ -87,13 +51,10 @@ export const listJobs = (spoolId?: string): Job[] => {
  * @param spool The spool the job would draw from.
  * @returns The per-field issue.
  */
-const overDraftIssue = (spool: { usedMg: number; initialWeightMg: number }): ApiIssue => {
-  const leftMg = spool.initialWeightMg - spool.usedMg;
-  return {
-    field: "filamentUsedGrams",
-    message: `filamentUsedGrams exceeds the ${mgToGrams(leftMg)} g left on the spool`,
-  };
-};
+const overDraftIssue = (spool: { leftMg: number }): ApiIssue => ({
+  field: "filamentUsedGrams",
+  message: `filamentUsedGrams exceeds the ${mgToGrams(spool.leftMg)} g left on the spool`,
+});
 
 /**
  * Create a job and debit its spool in one transaction.
@@ -106,17 +67,14 @@ const overDraftIssue = (spool: { usedMg: number; initialWeightMg: number }): Api
  */
 export const createJob = (data: CreateJobData): JobMutationResult => {
   return db.transaction((tx) => {
-    const spool = tx.select().from(spools).where(eq(spools.id, data.spoolId)).get();
+    const spool = spoolQueries.findSpoolById(tx, data.spoolId);
     if (!spool) return { status: "not-found" as const };
 
-    if (data.projectId !== null) {
-      const project = tx.select().from(projects).where(eq(projects.id, data.projectId)).get();
-      if (!project) {
-        return {
-          status: "issues" as const,
-          issues: [{ field: "projectId", message: "projectId does not reference an existing project" }],
-        };
-      }
+    if (data.projectId !== null && !jobQueries.findProjectId(tx, data.projectId)) {
+      return {
+        status: "issues" as const,
+        issues: [{ field: "projectId", message: "projectId does not reference an existing project" }],
+      };
     }
 
     if (spool.usedMg + data.filamentUsedMg > spool.initialWeightMg) {
@@ -124,33 +82,28 @@ export const createJob = (data: CreateJobData): JobMutationResult => {
     }
 
     const now = new Date().toISOString();
-    const id = crypto.randomUUID();
     // Derive at most when the caller omits cost; the spool's initial weight is
     // always > 0 (validator), so this division is safe.
     const costCents =
       data.costCents ?? Math.round((data.filamentUsedMg * spool.costCents) / spool.initialWeightMg);
 
-    tx.update(spools)
-      .set({ usedMg: spool.usedMg + data.filamentUsedMg, updatedAt: now })
-      .where(eq(spools.id, spool.id))
-      .run();
-    tx.insert(jobs)
-      .values({
-        id,
-        name: data.name,
-        spoolId: spool.id,
-        projectId: data.projectId,
-        filamentUsedMg: data.filamentUsedMg,
-        costCents,
-        date: data.date ?? now,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    spoolQueries.updateSpoolById(tx, spool.id, { usedMg: spool.usedMg + data.filamentUsedMg, updatedAt: now });
 
-    // Re-read through the outer `db` handle for the `Job` shape (same
-    // connection, so the transaction's writes are visible).
-    return { status: "ok" as const, job: getJob(id) as Job };
+    const row: JobRow = {
+      id: crypto.randomUUID(),
+      name: data.name,
+      spoolId: spool.id,
+      projectId: data.projectId,
+      filamentUsedMg: data.filamentUsedMg,
+      costCents,
+      date: data.date ?? now,
+      createdAt: now,
+      updatedAt: now,
+    };
+    jobQueries.insertJob(tx, row);
+
+    // Re-read through the same transaction handle, so the write is visible.
+    return { status: "ok" as const, job: jobQueries.findJobById(tx, row.id)! };
   });
 };
 
@@ -167,59 +120,44 @@ export const createJob = (data: CreateJobData): JobMutationResult => {
  */
 export const editJob = (id: string, data: EditJobData): JobMutationResult => {
   return db.transaction((tx) => {
-    const job = tx.select().from(jobs).where(eq(jobs.id, id)).get();
+    const job = jobQueries.findJobById(tx, id);
     if (!job) return { status: "not-found" as const };
 
     // FK guarantees the spool exists while the job row does.
-    const spool = tx.select().from(spools).where(eq(spools.id, job.spoolId)).get();
+    const spool = spoolQueries.findSpoolById(tx, job.spoolId);
     if (!spool) return { status: "not-found" as const };
 
-    const delta =
-      data.filamentUsedMg !== undefined ? data.filamentUsedMg - job.filamentUsedMg : 0;
+    const delta = data.filamentUsedMg !== undefined ? data.filamentUsedMg - job.filamentUsedMg : 0;
 
-    if (delta > 0 && spool.usedMg + delta > spool.initialWeightMg) {
+    if (delta > 0 && delta > spool.leftMg) {
       return { status: "issues" as const, issues: [overDraftIssue(spool)] };
     }
 
-    if (data.projectId !== undefined && data.projectId !== null) {
-      const project = tx.select().from(projects).where(eq(projects.id, data.projectId)).get();
-      if (!project) {
-        return {
-          status: "issues" as const,
-          issues: [{ field: "projectId", message: "projectId does not reference an existing project" }],
-        };
-      }
+    if (data.projectId !== undefined && data.projectId !== null && !jobQueries.findProjectId(tx, data.projectId)) {
+      return {
+        status: "issues" as const,
+        issues: [{ field: "projectId", message: "projectId does not reference an existing project" }],
+      };
     }
 
     const now = new Date().toISOString();
 
     // Only touch the spool when the filament amount actually changed.
     if (delta !== 0) {
-      tx.update(spools)
-        .set({ usedMg: spool.usedMg + delta, updatedAt: now })
-        .where(eq(spools.id, spool.id))
-        .run();
+      spoolQueries.updateSpoolById(tx, spool.id, { usedMg: spool.usedMg + delta, updatedAt: now });
     }
 
-    const changes: {
-      name?: string;
-      filamentUsedMg?: number;
-      costCents?: number;
-      projectId?: string | null;
-    } = {};
+    const changes: Partial<JobRow> = { updatedAt: now };
     if (data.name !== undefined) changes.name = data.name;
     if (data.filamentUsedMg !== undefined) changes.filamentUsedMg = data.filamentUsedMg;
     if (data.costCents !== undefined) changes.costCents = data.costCents;
     if (data.projectId !== undefined) changes.projectId = data.projectId;
 
-    if (Object.keys(changes).length > 0) {
-      tx.update(jobs)
-        .set({ ...changes, updatedAt: now })
-        .where(eq(jobs.id, id))
-        .run();
+    if (Object.keys(changes).length > 1) {
+      jobQueries.updateJobById(tx, id, changes);
     }
 
-    return { status: "ok" as const, job: getJob(id) as Job };
+    return { status: "ok" as const, job: jobQueries.findJobById(tx, id)! };
   });
 };
 
@@ -231,19 +169,18 @@ export const editJob = (id: string, data: EditJobData): JobMutationResult => {
  */
 export const deleteJob = (id: string): JobDeleteResult => {
   return db.transaction((tx) => {
-    const job = tx.select().from(jobs).where(eq(jobs.id, id)).get();
+    const job = jobQueries.findJobById(tx, id);
     if (!job) return { status: "not-found" as const };
 
     // FK guarantees the spool exists while the job row does.
-    const spool = tx.select().from(spools).where(eq(spools.id, job.spoolId)).get();
+    const spool = spoolQueries.findSpoolById(tx, job.spoolId);
     if (!spool) return { status: "not-found" as const };
 
-    const now = new Date().toISOString();
-    tx.update(spools)
-      .set({ usedMg: spool.usedMg - job.filamentUsedMg, updatedAt: now })
-      .where(eq(spools.id, spool.id))
-      .run();
-    tx.delete(jobs).where(eq(jobs.id, id)).run();
+    spoolQueries.updateSpoolById(tx, spool.id, {
+      usedMg: spool.usedMg - job.filamentUsedMg,
+      updatedAt: new Date().toISOString(),
+    });
+    jobQueries.deleteJobById(tx, id);
 
     return { status: "ok" as const };
   });
